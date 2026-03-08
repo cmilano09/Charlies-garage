@@ -1,29 +1,33 @@
-// ─────────────────────────────────────────────
-//  Charlie's Car Designer – app.js  v2.0
-//  Showroom Edition – realistic canvas rendering
-// ─────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+//  Charlie's Car Designer – app.js  v3.0  (Three.js 3-D Edition)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import * as THREE from 'three';
+import { OrbitControls }  from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ── Data ───────────────────────────────────────────────────────────────────
 
 const CARS = [
-  { id: 'mercedes', label: 'Mercedes-Benz', desc: 'Sleek & luxurious',      shape: 'sedan'    },
-  { id: 'lambo',    label: 'Lamborghini',   desc: 'Low & aggressive',        shape: 'supercar' },
-  { id: 'volvo',    label: 'Volvo SUV',     desc: 'Powerful & refined',      shape: 'suv'      },
-  { id: 'starter',  label: 'Classic',       desc: 'Timeless vintage style',  shape: 'classic'  },
+  { id: 'mercedes', label: 'Mercedes-Benz',  desc: 'Sleek & luxurious',      shape: 'sedan'    },
+  { id: 'lambo',    label: 'Lamborghini',     desc: 'Low & aggressive',        shape: 'supercar' },
+  { id: 'volvo',    label: 'Volvo SUV',       desc: 'Powerful & refined',      shape: 'suv'      },
+  { id: 'classic',  label: 'Classic',         desc: 'Timeless vintage style',  shape: 'classic'  },
 ];
 
 const COLORS = [
   { name: 'Racing Red',    hex: '#c0392b' },
   { name: 'Burnt Orange',  hex: '#ca6f1e' },
-  { name: 'Sunburst',      hex: '#d4ac0d' },
-  { name: 'British Green', hex: '#1e7e34' },
-  { name: 'Ocean Blue',    hex: '#1f618d' },
-  { name: 'Midnight',      hex: '#17202a' },
+  { name: 'Sunburst',      hex: '#b7950b' },
+  { name: 'British Green', hex: '#1a5e20' },
+  { name: 'Ocean Blue',    hex: '#1a5276' },
+  { name: 'Midnight Blue', hex: '#1c2833' },
   { name: 'Purple',        hex: '#6c3483' },
   { name: 'Hot Pink',      hex: '#c0185c' },
-  { name: 'Pearl White',   hex: '#e8e8e8' },
+  { name: 'Pearl White',   hex: '#f0f0f0' },
   { name: 'Silver',        hex: '#7f8c8d' },
   { name: 'Obsidian',      hex: '#1c1c1c' },
-  { name: 'Rainbow',       hex: 'rainbow' },
-  { name: 'Lava',          hex: 'lava'    },
+  { name: 'Candy Red',     hex: '#ff0033' },
 ];
 
 const WHEELS = [
@@ -31,14 +35,6 @@ const WHEELS = [
   { id: 'sport',    label: '🏎 Sport'    },
   { id: 'gold',     label: '✨ Gold'     },
   { id: 'spiky',    label: '🔩 Spiky'   },
-];
-
-const STICKERS = [
-  { id: 'none',      label: '✖ None'      },
-  { id: 'flames',    label: '🔥 Flames'   },
-  { id: 'stars',     label: '⭐ Stars'    },
-  { id: 'stripes',   label: '〰 Stripes'  },
-  { id: 'lightning', label: '⚡ Lightning' },
 ];
 
 const HEADLIGHTS = [
@@ -55,98 +51,1203 @@ const SPOILERS = [
   { id: 'wing',  label: '✈ Wing'    },
 ];
 
-const BG_SCENES = [
-  { label: '🏁 Racetrack',      gradient: ['#555', '#333'], groundColor: '#ccc', groundStripe: true  },
-  { label: '🏙 City Street',    gradient: ['#1a1a3e', '#2a2a5e'], groundColor: '#444', groundStripe: false },
-  { label: '🏔 Mountains',      gradient: ['#87ceeb', '#ddeeff'], groundColor: '#5d8a5e', groundStripe: false },
-  { label: '🌅 Sunset Highway', gradient: ['#ff7043', '#ffcc02'], groundColor: '#8b6f47', groundStripe: true  },
-];
-
-// ── State ──────────────────────────────────────
+// ── App State ──────────────────────────────────────────────────────────────
 
 const state = {
   carShape:  'sedan',
   color:     '#c0392b',
   wheel:     'standard',
-  sticker:   'none',
   headlight: 'normal',
   spoiler:   'none',
-  bgIndex:   0,
 };
 
-let savedCars = JSON.parse(localStorage.getItem('charlies-cars') || '[]');
+let savedCars = JSON.parse(localStorage.getItem('charlies-cars-3d') || '[]');
 
-// ── Utility ────────────────────────────────────
+// ── Three.js globals ───────────────────────────────────────────────────────
+
+let renderer, scene, camera, controls;
+let carGroup = null;
+let threeReady = false;
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SCREEN MANAGEMENT
+// ═════════════════════════════════════════════════════════════════════════════
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+
+  if (id === 'screen-garage') {
+    // Slight delay so the element is visible before measuring
+    setTimeout(() => {
+      if (!threeReady) initThreeJS();
+      else             resizeRenderer();
+      buildCar();
+    }, 50);
+  }
   if (id === 'screen-collection') renderCollection();
 }
 
-function showToast(msg) {
+function showToast(msg, duration = 2400) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.remove('hidden');
-  setTimeout(() => t.classList.add('hidden'), 2200);
+  setTimeout(() => t.classList.add('hidden'), duration);
 }
 
-// ── Car Picker ─────────────────────────────────
+function goToPicker()      { showScreen('screen-pick');       }
+function viewCollection()  { showScreen('screen-collection'); }
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  THREE.JS  –  SCENE SETUP
+// ═════════════════════════════════════════════════════════════════════════════
+
+function initThreeJS() {
+  if (threeReady) return;
+  threeReady = true;
+
+  const canvas    = document.getElementById('three-canvas');
+  const container = document.getElementById('viewport-wrap');
+
+  // ── Renderer ────────────────────────────────
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled  = true;
+  renderer.shadowMap.type     = THREE.PCFSoftShadowMap;
+  renderer.toneMapping        = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.4;
+  renderer.outputColorSpace   = THREE.SRGBColorSpace;
+
+  // ── Scene ────────────────────────────────────
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x18181e);
+  scene.fog = new THREE.FogExp2(0x18181e, 0.045);
+
+  // ── Environment (metallic reflection map) ────
+  const pmrem   = new THREE.PMREMGenerator(renderer);
+  const roomEnv = new RoomEnvironment(renderer);
+  scene.environment = pmrem.fromScene(roomEnv, 0.04).texture;
+  pmrem.dispose();
+
+  // ── Camera ───────────────────────────────────
+  const { clientWidth: w, clientHeight: h } = container;
+  camera = new THREE.PerspectiveCamera(38, w / h, 0.05, 200);
+  camera.position.set(4.2, 1.9, 5.5);
+  camera.lookAt(0, 0.55, 0);
+
+  // ── Orbit Controls ───────────────────────────
+  controls = new OrbitControls(camera, canvas);
+  controls.target.set(0, 0.55, 0);
+  controls.enableDamping   = true;
+  controls.dampingFactor   = 0.06;
+  controls.minPolarAngle   = 0.08;
+  controls.maxPolarAngle   = Math.PI / 2.05;
+  controls.minDistance     = 2.5;
+  controls.maxDistance     = 14;
+  controls.autoRotate      = true;
+  controls.autoRotateSpeed = 0.7;
+
+  // ── Lighting ─────────────────────────────────
+  scene.add(new THREE.AmbientLight(0xfff8f0, 0.55));
+
+  const makeSpot = (x, y, z, intensity, angle = Math.PI / 7) => {
+    const s = new THREE.SpotLight(0xfff8f0, intensity, 25, angle, 0.4, 1.8);
+    s.position.set(x, y, z);
+    s.castShadow = true;
+    s.shadow.mapSize.setScalar(1024);
+    s.shadow.camera.near = 0.5;
+    s.shadow.camera.far  = 22;
+    scene.add(s);
+    return s;
+  };
+  makeSpot(0,   9,  0,   120);  // overhead key
+  makeSpot(6,   7,  4,    60);  // front-right fill
+  makeSpot(-5,  6,  4,    45);  // front-left fill
+  makeSpot(0,   5, -6,    35);  // rear accent
+  makeSpot(0,   4,  7,    30);  // front low
+
+  // ── Showroom Floor ───────────────────────────
+  buildShowroomFloor();
+
+  // ── Resize ───────────────────────────────────
+  window.addEventListener('resize', resizeRenderer);
+  resizeRenderer();
+
+  // ── Render loop ──────────────────────────────
+  (function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  })();
+}
+
+function resizeRenderer() {
+  const c = document.getElementById('viewport-wrap');
+  if (!c || !renderer) return;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (w === 0 || h === 0) return;
+  renderer.setSize(w, h);
+  if (camera) { camera.aspect = w / h; camera.updateProjectionMatrix(); }
+}
+
+function buildShowroomFloor() {
+  // Main floor tile
+  const floorGeo = new THREE.PlaneGeometry(40, 40, 10, 10);
+  const floorMat = new THREE.MeshStandardMaterial({
+    color:            0xcccccc,
+    roughness:        0.06,
+    metalness:        0.08,
+    envMapIntensity:  1.2,
+  });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Showroom podium disc
+  const discGeo = new THREE.CylinderGeometry(3.8, 4.0, 0.06, 80);
+  const discMat = new THREE.MeshStandardMaterial({
+    color:           0xe8e8e8,
+    roughness:       0.04,
+    metalness:       0.12,
+    envMapIntensity: 1.5,
+  });
+  const disc = new THREE.Mesh(discGeo, discMat);
+  disc.position.y = 0.03;
+  disc.receiveShadow = true;
+  scene.add(disc);
+
+  // Pedestal edge ring
+  const ringGeo = new THREE.TorusGeometry(3.9, 0.06, 8, 100);
+  const ringMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffd700, metalness: 0.95, roughness: 0.08, clearcoat: 1,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = 0.06;
+  scene.add(ring);
+
+  // Back wall
+  const wallGeo = new THREE.PlaneGeometry(28, 12);
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf0eeeb, roughness: 0.92 });
+  const wall    = new THREE.Mesh(wallGeo, wallMat);
+  wall.position.set(0, 5, -14);
+  wall.receiveShadow = true;
+  scene.add(wall);
+
+  // Brand sign on wall
+  addWallSign();
+}
+
+function addWallSign() {
+  // A simple glowing logo plate on the back wall
+  const geo = new THREE.BoxGeometry(5, 0.5, 0.05);
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: 0xffd700, metalness: 0.95, roughness: 0.08,
+    emissive: new THREE.Color(0xffd700), emissiveIntensity: 0.3,
+  });
+  const sign = new THREE.Mesh(geo, mat);
+  sign.position.set(0, 7, -13.9);
+  scene.add(sign);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  CAR MATERIALS
+// ═════════════════════════════════════════════════════════════════════════════
+
+function paintMaterial(hexColor) {
+  return new THREE.MeshPhysicalMaterial({
+    color:               new THREE.Color(hexColor),
+    metalness:           0.88,
+    roughness:           0.16,
+    clearcoat:           1.0,
+    clearcoatRoughness:  0.06,
+    envMapIntensity:     2.0,
+    reflectivity:        1.0,
+  });
+}
+
+function glassMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    color:        new THREE.Color(0x0a1f2e),
+    metalness:    0.0,
+    roughness:    0.03,
+    transmission: 0.80,
+    transparent:  true,
+    opacity:      0.88,
+    ior:          1.5,
+    envMapIntensity: 1.2,
+  });
+}
+
+function tyreMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color:     0x111111,
+    roughness: 0.92,
+    metalness: 0.0,
+  });
+}
+
+function rimMaterial(style) {
+  const c = { standard: 0xc0c0c0, sport: 0xe8e8f8, gold: 0xffd700, spiky: 0xff3333 };
+  return new THREE.MeshPhysicalMaterial({
+    color:              c[style] || c.standard,
+    metalness:          0.94,
+    roughness:          0.10,
+    clearcoat:          0.7,
+    clearcoatRoughness: 0.08,
+    envMapIntensity:    2.0,
+  });
+}
+
+function headlightMaterial(style) {
+  const c = { normal: 0xffffd0, led: 0xb0d8ff, neon: 0x88ffcc, laser: 0xff6666 };
+  const i = { normal: 4,        led: 6,         neon: 6,         laser: 8        };
+  const col = new THREE.Color(c[style] || c.normal);
+  return new THREE.MeshStandardMaterial({
+    color:             col,
+    emissive:          col,
+    emissiveIntensity: i[style] || 4,
+  });
+}
+
+function taillightMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color:             new THREE.Color(0xff0000),
+    emissive:          new THREE.Color(0xcc0000),
+    emissiveIntensity: 3,
+    transparent:       true,
+    opacity:           0.85,
+  });
+}
+
+function chromeMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    color:     0xdddddd,
+    metalness: 0.98,
+    roughness: 0.04,
+    clearcoat: 1.0,
+    envMapIntensity: 2.5,
+  });
+}
+
+function darkPlasticMaterial() {
+  return new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7, metalness: 0.05 });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  WHEEL ASSEMBLY
+// ═════════════════════════════════════════════════════════════════════════════
+
+function createWheelAssembly(style) {
+  const g   = new THREE.Group();
+  const tyR = 0.37, tyH = 0.24;
+  const riR = 0.265, riH = 0.26;
+
+  // Tyre (cylinder along Y, we'll rotate group so axis is along X)
+  const tyre = new THREE.Mesh(
+    new THREE.CylinderGeometry(tyR, tyR, tyH, 40, 1, false),
+    tyreMaterial()
+  );
+  tyre.castShadow = true;
+  g.add(tyre);
+
+  // Tyre sidewall detail (ring)
+  const sideMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8 });
+  [-1, 1].forEach(side => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(tyR * 0.82, tyR * 0.04, 8, 40),
+      sideMat
+    );
+    ring.position.y = side * tyH * 0.42;
+    g.add(ring);
+  });
+
+  // Rim
+  const rim = new THREE.Mesh(
+    new THREE.CylinderGeometry(riR, riR, riH + 0.01, 40),
+    rimMaterial(style)
+  );
+  rim.castShadow = true;
+  g.add(rim);
+
+  // Spokes
+  const spokeCount = style === 'spiky' ? 8 : style === 'gold' ? 10 : 5;
+  const sR  = rimMaterial(style);
+  for (let i = 0; i < spokeCount; i++) {
+    const angle  = (i / spokeCount) * Math.PI * 2;
+    const sW     = style === 'spiky' ? 0.04 : 0.042;
+    const spoke  = new THREE.Mesh(
+      new THREE.BoxGeometry(sW, riH + 0.02, riR * 1.55),
+      sR
+    );
+    spoke.rotation.y = angle;
+    g.add(spoke);
+  }
+
+  // Rim outer ring
+  const outerRing = new THREE.Mesh(
+    new THREE.TorusGeometry(riR * 0.93, riR * 0.05, 8, 40),
+    rimMaterial(style)
+  );
+  outerRing.rotation.x = Math.PI / 2;
+  g.add(outerRing);
+
+  // Centre cap
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.068, 0.068, riH + 0.03, 20),
+    chromeMaterial()
+  );
+  g.add(cap);
+
+  // Brake disc (shows through spokes)
+  const disc = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.19, 0.19, 0.025, 32),
+    new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6, metalness: 0.4 })
+  );
+  g.add(disc);
+
+  // The wheel cylinder axis is Y; to mount on car facing outward we rotate 90° around Z
+  g.rotation.z = Math.PI / 2;
+  return g;
+}
+
+function addWheels(carGrp, positions, style) {
+  positions.forEach(([x, y, z]) => {
+    const w = createWheelAssembly(style);
+    w.position.set(x, y, z);
+    w.castShadow = true;
+    carGrp.add(w);
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  EXTRUDED BODY HELPER
+//  Takes a 2-D path spec (array of points/beziers), extrudes it, centres it.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function makeBodyMesh(profileSpec, depth, material, bevel = 0.045) {
+  const shape = new THREE.Shape();
+
+  profileSpec.forEach((cmd, i) => {
+    if (i === 0)                              shape.moveTo(cmd[0], cmd[1]);
+    else if (cmd.length === 2)                shape.lineTo(cmd[0], cmd[1]);
+    else if (cmd.length === 6)                shape.bezierCurveTo(...cmd);
+    else if (cmd.length === 4)                shape.quadraticCurveTo(...cmd);
+  });
+  shape.closePath();
+
+  const settings = {
+    depth,
+    bevelEnabled:    bevel > 0,
+    bevelThickness:  bevel,
+    bevelSize:       bevel * 0.75,
+    bevelSegments:   5,
+    curveSegments:   14,
+  };
+
+  const geo  = new THREE.ExtrudeGeometry(shape, settings);
+  geo.center();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.castShadow    = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SEDAN  (Mercedes-like silhouette)
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildSedan(grp, s) {
+  const col   = s.color;
+  const depth = 1.80;   // car width
+  const paint = paintMaterial(col);
+
+  // ── Main body silhouette ────────────────────
+  //  X: -2.1 (rear) → +2.25 (front)
+  //  Y:  0.10 (bumper bottom) → 1.38 (roof)
+  const bodyProfile = [
+    [-2.08, 0.12],
+    [-2.08, 0.12, -2.18, 0.14, -2.20, 0.35],
+    [-2.20, 0.35, -2.18, 0.58, -2.04, 0.74],
+    [-1.78, 0.76],
+    [-1.18, 0.80],
+    [-1.18, 0.80, -0.82, 0.84, -0.62, 0.96],
+    [-0.62, 0.96, -0.44, 1.08, -0.35, 1.26],
+    [-0.35, 1.26, -0.20, 1.38,  0.10, 1.40],
+    [ 0.72, 1.40],
+    [ 0.72, 1.40,  0.90, 1.38,  1.10, 1.26],
+    [ 1.10, 1.26,  1.32, 1.14,  1.44, 0.98],
+    [ 1.44, 0.98,  1.52, 0.90,  1.58, 0.84],
+    [ 1.80, 0.80],
+    [ 1.80, 0.80,  2.05, 0.76,  2.18, 0.68],
+    [ 2.18, 0.68,  2.26, 0.56,  2.28, 0.38],
+    [ 2.28, 0.38,  2.28, 0.18,  2.20, 0.12],
+    [-2.08, 0.12],
+  ];
+
+  const body = makeBodyMesh(bodyProfile, depth, paint);
+  // Centre the car so wheel-base midpoint is at X=0, bottom at Y=0
+  body.position.set(0, 0, 0);
+  grp.add(body);
+
+  // ── Roof darker band (ambient occlusion impression) ──
+  const roofProfile = [
+    [-0.42, 1.00],
+    [-0.42, 1.00, -0.28, 1.12, -0.20, 1.22],
+    [-0.20, 1.22,  0.05, 1.34,  0.22, 1.36],
+    [ 0.72, 1.36],
+    [ 0.72, 1.36,  0.88, 1.34,  1.06, 1.24],
+    [ 1.06, 1.24,  1.28, 1.12,  1.36, 0.98],
+    [ 0.30, 0.82],
+    [-0.42, 1.00],
+  ];
+  const roofMat = paintMaterial(col);
+  roofMat.color.multiplyScalar(0.88);
+  const roofMesh = makeBodyMesh(roofProfile, depth * 0.86, roofMat, 0.02);
+  grp.add(roofMesh);
+
+  // ── Windshield glass ────────────────────────
+  const windProfile = [
+    [ 1.08, 0.82],
+    [ 1.08, 0.82,  1.30, 1.12,  1.14, 1.24],
+    [ 0.78, 1.36],
+    [ 0.78, 1.36,  0.72, 1.22,  0.78, 0.84],
+    [ 1.08, 0.82],
+  ];
+  const windMesh = makeBodyMesh(windProfile, depth * 0.72, glassMaterial(), 0.01);
+  windMesh.position.z -= depth * 0.07;
+  grp.add(windMesh);
+
+  // ── Side windows (rear quarter + main side) ──
+  const sideWinProfile = [
+    [-0.42,  0.98],
+    [-0.42,  0.98, -0.28, 1.10, -0.20, 1.20],
+    [ 0.68,  1.36],
+    [ 0.68,  1.36,  0.72, 1.22,  0.74, 0.82],
+    [ 0.60,  0.82],
+    [-0.42,  0.98],
+  ];
+  const sideWin = makeBodyMesh(sideWinProfile, depth * 0.06, glassMaterial(), 0.005);
+  sideWin.position.z = depth / 2 + 0.04;
+  grp.add(sideWin);
+  const sideWin2 = sideWin.clone();
+  sideWin2.position.z = -(depth / 2 + 0.04);
+  grp.add(sideWin2);
+
+  // ── Rear window ────────────────────────────
+  const rearWinProfile = [
+    [-1.18, 0.80],
+    [-1.18, 0.80, -0.90, 0.84, -0.66, 0.96],
+    [-0.66, 0.96, -0.50, 1.06, -0.40, 1.22],
+    [-0.20, 1.26],
+    [-0.20, 1.26, -0.40, 1.28, -0.56, 1.24],
+    [-0.56, 1.24, -0.72, 1.16, -0.92, 0.96],
+    [-0.92, 0.96, -1.10, 0.82, -1.18, 0.80],
+  ];
+  const rearWin = makeBodyMesh(rearWinProfile, depth * 0.74, glassMaterial(), 0.01);
+  grp.add(rearWin);
+
+  // ── Door panel crease ────────────────────────
+  const creaseMat = paintMaterial(col);
+  creaseMat.color.multiplyScalar(0.78);
+  const creaseGeo = new THREE.BoxGeometry(3.4, 0.04, depth + 0.1);
+  const crease    = new THREE.Mesh(creaseGeo, creaseMat);
+  crease.position.set(0.04, 0.60, 0);
+  grp.add(crease);
+
+  // ── Front grille ────────────────────────────
+  const grilleMat = new THREE.MeshPhysicalMaterial({
+    color: 0x222222, roughness: 0.3, metalness: 0.7,
+  });
+  const grilleGeo = new THREE.BoxGeometry(0.04, 0.26, 0.70);
+  const grille    = new THREE.Mesh(grilleGeo, grilleMat);
+  grille.position.set(2.25, 0.40, 0);
+  grp.add(grille);
+  // Grille slats
+  for (let i = 0; i < 5; i++) {
+    const slat = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.025, 0.68),
+      chromeMaterial()
+    );
+    slat.position.set(2.25, 0.28 + i * 0.052, 0);
+    grp.add(slat);
+  }
+
+  // ── Front bumper lower ──────────────────────
+  const bumperF = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.16, 1.50),
+    darkPlasticMaterial()
+  );
+  bumperF.position.set(2.24, 0.20, 0);
+  grp.add(bumperF);
+
+  // ── Rear bumper ─────────────────────────────
+  const bumperR = new THREE.Mesh(
+    new THREE.BoxGeometry(0.08, 0.22, 1.55),
+    darkPlasticMaterial()
+  );
+  bumperR.position.set(-2.16, 0.24, 0);
+  grp.add(bumperR);
+
+  // ── Headlights (front) ──────────────────────
+  const hlMat = headlightMaterial(s.headlight);
+  [0.55, -0.55].forEach(z => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.28), hlMat);
+    hl.position.set(2.27, 0.55, z);
+    grp.add(hl);
+    // Add a point light inside each headlight
+    const light = new THREE.PointLight(new THREE.Color(hlMat.color), 2, 3, 2);
+    light.position.set(2.2, 0.55, z);
+    grp.add(light);
+  });
+
+  // ── Tail lights ────────────────────────────
+  const tlMat = taillightMaterial();
+  [0.55, -0.55].forEach(z => {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.38), tlMat);
+    tl.position.set(-2.16, 0.58, z);
+    grp.add(tl);
+    const rl = new THREE.PointLight(0xff2200, 1.5, 2.5, 2);
+    rl.position.set(-2.1, 0.58, z);
+    grp.add(rl);
+  });
+
+  // ── Side mirrors ────────────────────────────
+  [depth / 2 + 0.06, -(depth / 2 + 0.06)].forEach(z => {
+    const mirror = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.06, 0.08),
+      darkPlasticMaterial()
+    );
+    mirror.position.set(1.15, 0.90, z);
+    grp.add(mirror);
+  });
+
+  // ── Wheels ──────────────────────────────────
+  const wY = 0.37;
+  addWheels(grp, [
+    [-1.28, wY, -(depth / 2 + 0.01)],
+    [-1.28, wY,   depth / 2 + 0.01 ],
+    [ 1.28, wY, -(depth / 2 + 0.01)],
+    [ 1.28, wY,   depth / 2 + 0.01 ],
+  ], s.wheel);
+
+  // ── Spoiler ──────────────────────────────────
+  addSpoiler(grp, 'sedan', s.spoiler, col, depth);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SUPERCAR  (Lamborghini-like silhouette)
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildSupercar(grp, s) {
+  const col   = s.color;
+  const depth = 1.88;
+  const paint = paintMaterial(col);
+
+  // Very low, wedge-shaped profile
+  const bodyProfile = [
+    [-2.18, 0.12],
+    [-2.18, 0.12, -2.26, 0.14, -2.28, 0.30],
+    [-2.28, 0.30, -2.26, 0.54, -2.14, 0.60],
+    [-2.00, 0.62],
+    [-1.60, 0.64],
+    [-1.60, 0.64, -1.22, 0.68, -0.98, 0.74],
+    [-0.98, 0.74, -0.75, 0.80, -0.60, 0.96],
+    [-0.60, 0.96, -0.44, 1.08, -0.30, 1.18],
+    [-0.30, 1.18, -0.10, 1.26,  0.25, 1.28],
+    [ 0.55, 1.28],
+    [ 0.55, 1.28,  0.70, 1.26,  0.84, 1.18],
+    [ 0.84, 1.18,  1.04, 1.04,  1.18, 0.88],
+    [ 1.18, 0.88,  1.32, 0.74,  1.46, 0.68],
+    [ 1.80, 0.64],
+    [ 1.80, 0.64,  2.06, 0.62,  2.20, 0.58],
+    [ 2.20, 0.58,  2.32, 0.52,  2.36, 0.38],
+    [ 2.36, 0.38,  2.36, 0.18,  2.28, 0.12],
+    [-2.18, 0.12],
+  ];
+
+  const body = makeBodyMesh(bodyProfile, depth, paint);
+  grp.add(body);
+
+  // Roof (narrower, lower)
+  const roofProfile = [
+    [-0.68,  0.74],
+    [-0.68,  0.74, -0.48, 0.94, -0.34, 1.10],
+    [-0.34,  1.10, -0.16, 1.24,  0.10, 1.26],
+    [ 0.52,  1.26],
+    [ 0.52,  1.26,  0.68, 1.24,  0.82, 1.14],
+    [ 0.82,  1.14,  1.00, 1.00,  1.14, 0.86],
+    [ 0.50,  0.72],
+    [-0.68,  0.74],
+  ];
+  const roofMat = paintMaterial(col);
+  roofMat.color.multiplyScalar(0.85);
+  grp.add(makeBodyMesh(roofProfile, depth * 0.82, roofMat, 0.02));
+
+  // Windshield
+  const windProfile = [
+    [ 1.12, 0.66],
+    [ 1.12, 0.66,  1.24, 0.86,  1.14, 1.16],
+    [ 0.54, 1.26],
+    [ 0.54, 1.26,  0.60, 1.00,  0.66, 0.70],
+    [ 1.12, 0.66],
+  ];
+  grp.add(makeBodyMesh(windProfile, depth * 0.70, glassMaterial(), 0.01));
+
+  // Side glass
+  const sideWinP = [
+    [-0.72, 0.72],
+    [-0.72, 0.72, -0.52, 0.94, -0.36, 1.08],
+    [ 0.48, 1.24],
+    [ 0.48, 1.24,  0.56, 1.04,  0.62, 0.68],
+    [ 0.20, 0.64],
+    [-0.72, 0.72],
+  ];
+  const sideW = makeBodyMesh(sideWinP, depth * 0.06, glassMaterial(), 0.005);
+  sideW.position.z = depth / 2 + 0.04;
+  grp.add(sideW);
+  const sideW2 = sideW.clone();
+  sideW2.position.z = -(depth / 2 + 0.04);
+  grp.add(sideW2);
+
+  // Air intake scoops (side)
+  [depth / 2 * 0.85, -depth / 2 * 0.85].forEach(z => {
+    const scoop = new THREE.Mesh(
+      new THREE.BoxGeometry(0.40, 0.14, 0.08),
+      darkPlasticMaterial()
+    );
+    scoop.position.set(-1.40, 0.56, z);
+    grp.add(scoop);
+  });
+
+  // Low front splitter
+  const splitter = new THREE.Mesh(
+    new THREE.BoxGeometry(0.06, 0.06, depth * 0.90),
+    darkPlasticMaterial()
+  );
+  splitter.position.set(2.34, 0.09, 0);
+  grp.add(splitter);
+
+  // Grille (low and wide)
+  const grilleMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 });
+  const grilleG   = new THREE.BoxGeometry(0.06, 0.22, 0.90);
+  const grilleM   = new THREE.Mesh(grilleG, grilleMat);
+  grilleM.position.set(2.32, 0.36, 0);
+  grp.add(grilleM);
+
+  // Headlights (sharp, angled)
+  const hlMat = headlightMaterial(s.headlight);
+  [0.62, -0.62].forEach(z => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.32), hlMat);
+    hl.position.set(2.32, 0.50, z);
+    hl.rotation.x = 0.25;
+    grp.add(hl);
+    const light = new THREE.PointLight(new THREE.Color(hlMat.color), 2, 3, 2);
+    light.position.set(2.25, 0.50, z);
+    grp.add(light);
+  });
+
+  // Tail lights (strip)
+  const tlMat = taillightMaterial();
+  const tlGeo = new THREE.BoxGeometry(0.06, 0.06, depth * 0.85);
+  const tlMesh = new THREE.Mesh(tlGeo, tlMat);
+  tlMesh.position.set(-2.24, 0.52, 0);
+  grp.add(tlMesh);
+  const rl = new THREE.PointLight(0xff2200, 2, 2.5, 2);
+  rl.position.set(-2.18, 0.52, 0);
+  grp.add(rl);
+
+  // Side mirrors (very flat)
+  [depth / 2 + 0.05, -(depth / 2 + 0.05)].forEach(z => {
+    const mirror = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.04, 0.06),
+      darkPlasticMaterial()
+    );
+    mirror.position.set(0.94, 0.88, z);
+    grp.add(mirror);
+  });
+
+  // Wheels
+  const wY = 0.37;
+  addWheels(grp, [
+    [-1.35, wY, -(depth / 2 + 0.01)],
+    [-1.35, wY,   depth / 2 + 0.01 ],
+    [ 1.38, wY, -(depth / 2 + 0.01)],
+    [ 1.38, wY,   depth / 2 + 0.01 ],
+  ], s.wheel);
+
+  addSpoiler(grp, 'supercar', s.spoiler, col, depth);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SUV  (Volvo-like silhouette)
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildSuv(grp, s) {
+  const col   = s.color;
+  const depth = 1.95;
+  const paint = paintMaterial(col);
+
+  // Tall, boxy profile
+  const bodyProfile = [
+    [-2.10, 0.12],
+    [-2.10, 0.12, -2.18, 0.14, -2.20, 0.32],
+    [-2.20, 0.32, -2.18, 0.60, -2.10, 0.74],
+    [-2.10, 0.74],
+    [-2.10, 0.74, -2.08, 0.90, -2.06, 1.10],
+    [-2.06, 1.10, -2.00, 1.56, -1.90, 1.68],
+    [-1.58, 1.76],
+    [ 1.50, 1.76],
+    [ 1.50, 1.76,  1.82, 1.74,  1.94, 1.62],
+    [ 1.94, 1.62,  2.02, 1.50,  2.04, 1.30],
+    [ 2.04, 1.30,  2.06, 1.10,  2.06, 0.90],
+    [ 2.06, 0.90,  2.12, 0.76,  2.18, 0.66],
+    [ 2.18, 0.66,  2.26, 0.52,  2.28, 0.36],
+    [ 2.28, 0.36,  2.26, 0.18,  2.18, 0.12],
+    [-2.10, 0.12],
+  ];
+
+  const body = makeBodyMesh(bodyProfile, depth, paint);
+  grp.add(body);
+
+  // Roof (flat, slightly darker)
+  const roofProfile = [
+    [-1.92, 1.62],
+    [-1.92, 1.62, -1.96, 1.68, -1.60, 1.74],
+    [ 1.52, 1.74],
+    [ 1.52, 1.74,  1.82, 1.72,  1.92, 1.60],
+    [ 1.50, 1.44],
+    [-1.80, 1.44],
+    [-1.92, 1.62],
+  ];
+  const roofMat = paintMaterial(col);
+  roofMat.color.multiplyScalar(0.84);
+  grp.add(makeBodyMesh(roofProfile, depth * 0.94, roofMat, 0.02));
+
+  // Windshield (near vertical)
+  const windProfile = [
+    [ 1.94, 0.88],
+    [ 1.94, 0.88,  1.98, 1.24,  1.92, 1.56],
+    [ 1.52, 1.72],
+    [ 1.52, 1.72,  1.50, 1.44,  1.52, 0.86],
+    [ 1.94, 0.88],
+  ];
+  grp.add(makeBodyMesh(windProfile, depth * 0.74, glassMaterial(), 0.01));
+
+  // Side windows (3 rows)
+  const sideWinRows = [
+    // Front
+    [[ 1.50, 0.88], [ 1.50, 0.88, 1.52, 1.44, 1.52, 1.70], [ 0.66, 1.72], [ 0.66, 0.86], [ 1.50, 0.88]],
+    // Middle
+    [[ 0.60, 0.86], [ 0.60, 1.70], [-0.32, 1.70], [-0.32, 0.86], [ 0.60, 0.86]],
+    // Rear
+    [[-0.38, 0.86], [-0.38, 1.70], [-1.88, 1.64], [-1.88, 0.86], [-0.38, 0.86]],
+  ];
+  sideWinRows.forEach(pts => {
+    const sw = makeBodyMesh(pts, depth * 0.06, glassMaterial(), 0.005);
+    sw.position.z = depth / 2 + 0.04;
+    grp.add(sw);
+    const sw2 = sw.clone();
+    sw2.position.z = -(depth / 2 + 0.04);
+    grp.add(sw2);
+  });
+
+  // Rear window
+  const rearWinP = [
+    [-2.08, 0.76],
+    [-2.08, 0.76, -2.06, 1.08, -2.04, 1.60],
+    [-1.94, 1.66],
+    [-1.94, 1.66, -1.92, 1.44, -1.90, 0.76],
+    [-2.08, 0.76],
+  ];
+  grp.add(makeBodyMesh(rearWinP, depth * 0.76, glassMaterial(), 0.01));
+
+  // Roof rack
+  [-0.8, 0.0, 0.8].forEach(x => {
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.04, depth * 0.92),
+      chromeMaterial()
+    );
+    bar.position.set(x, 1.80, 0);
+    grp.add(bar);
+  });
+  const longBar = new THREE.Mesh(
+    new THREE.BoxGeometry(2.8, 0.03, 0.045),
+    chromeMaterial()
+  );
+  longBar.position.set(0, 1.80, depth * 0.42);
+  grp.add(longBar);
+  const longBar2 = longBar.clone();
+  longBar2.position.z = -depth * 0.42;
+  grp.add(longBar2);
+
+  // Headlights
+  const hlMat = headlightMaterial(s.headlight);
+  [0.65, -0.65].forEach(z => {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.35), hlMat);
+    hl.position.set(2.24, 0.60, z);
+    grp.add(hl);
+    const light = new THREE.PointLight(new THREE.Color(hlMat.color), 2, 3, 2);
+    light.position.set(2.18, 0.60, z);
+    grp.add(light);
+  });
+
+  // Tail lights (vertical strip)
+  [0.65, -0.65].forEach(z => {
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.38, 0.12), taillightMaterial());
+    tl.position.set(-2.16, 0.90, z);
+    grp.add(tl);
+  });
+
+  // Side mirrors
+  [depth / 2 + 0.06, -(depth / 2 + 0.06)].forEach(z => {
+    const mirror = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.08, 0.10),
+      darkPlasticMaterial()
+    );
+    mirror.position.set(1.80, 1.22, z);
+    grp.add(mirror);
+  });
+
+  // Running boards
+  [-depth / 2 - 0.02, depth / 2 + 0.02].forEach(z => {
+    const board = new THREE.Mesh(
+      new THREE.BoxGeometry(3.8, 0.045, 0.14),
+      darkPlasticMaterial()
+    );
+    board.position.set(0, 0.26, z);
+    grp.add(board);
+  });
+
+  const wY = 0.42;
+  addWheels(grp, [
+    [-1.25, wY, -(depth / 2 + 0.01)],
+    [-1.25, wY,   depth / 2 + 0.01 ],
+    [ 1.25, wY, -(depth / 2 + 0.01)],
+    [ 1.25, wY,   depth / 2 + 0.01 ],
+  ], s.wheel);
+
+  addSpoiler(grp, 'suv', s.spoiler, col, depth);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  CLASSIC  (vintage rounded silhouette)
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildClassic(grp, s) {
+  const col   = s.color;
+  const depth = 1.72;
+  const paint = paintMaterial(col);
+
+  // Rounded, bulbous vintage profile
+  const bodyProfile = [
+    [-2.14, 0.12],
+    [-2.14, 0.12, -2.22, 0.14, -2.24, 0.32],
+    [-2.24, 0.32, -2.22, 0.52, -2.14, 0.64],
+    [-2.14, 0.64, -2.04, 0.82, -1.85, 0.90],
+    [-1.85, 0.90, -1.70, 0.96, -1.48, 1.00],
+    [-1.48, 1.00, -1.22, 1.08, -1.02, 1.20],
+    [-1.02, 1.20, -0.78, 1.30, -0.50, 1.38],
+    [-0.50, 1.38, -0.22, 1.44,  0.10, 1.44],
+    [ 0.54, 1.44],
+    [ 0.54, 1.44,  0.78, 1.42,  0.96, 1.34],
+    [ 0.96, 1.34,  1.20, 1.24,  1.38, 1.10],
+    [ 1.38, 1.10,  1.56, 0.96,  1.68, 0.88],
+    [ 1.68, 0.88,  1.90, 0.80,  2.04, 0.68],
+    [ 2.04, 0.68,  2.18, 0.58,  2.22, 0.44],
+    [ 2.22, 0.44,  2.24, 0.28,  2.18, 0.14],
+    [ 2.18, 0.14,  2.12, 0.08,  2.00, 0.08],
+    [-2.14, 0.12],
+  ];
+
+  const body = makeBodyMesh(bodyProfile, depth, paint);
+  grp.add(body);
+
+  // Roof (organic, rounded)
+  const roofProfile = [
+    [-1.06, 1.18],
+    [-1.06, 1.18, -0.78, 1.28, -0.50, 1.36],
+    [-0.50, 1.36, -0.22, 1.42,  0.10, 1.42],
+    [ 0.52, 1.42],
+    [ 0.52, 1.42,  0.78, 1.40,  0.94, 1.32],
+    [ 0.94, 1.32,  1.18, 1.20,  1.36, 1.08],
+    [ 0.48, 0.88],
+    [-0.80, 0.88],
+    [-1.06, 1.18],
+  ];
+  const roofMat = paintMaterial(col);
+  roofMat.color.multiplyScalar(0.87);
+  grp.add(makeBodyMesh(roofProfile, depth * 0.84, roofMat, 0.02));
+
+  // Windshield
+  const windProfile = [
+    [ 1.14, 0.88],
+    [ 1.14, 0.88,  1.26, 1.10,  1.12, 1.30],
+    [ 0.56, 1.40],
+    [ 0.56, 1.40,  0.62, 1.12,  0.62, 0.86],
+    [ 1.14, 0.88],
+  ];
+  grp.add(makeBodyMesh(windProfile, depth * 0.70, glassMaterial(), 0.01));
+
+  // Main side window (classic large window)
+  const sideWinP = [
+    [-1.08, 1.16],
+    [-1.08, 1.16, -0.80, 1.26, -0.52, 1.34],
+    [ 0.50, 1.38],
+    [ 0.50, 1.38,  0.60, 1.14,  0.58, 0.84],
+    [-0.72, 0.84],
+    [-1.08, 1.16],
+  ];
+  const sw = makeBodyMesh(sideWinP, depth * 0.06, glassMaterial(), 0.005);
+  sw.position.z = depth / 2 + 0.04;
+  grp.add(sw);
+  const sw2 = sw.clone();
+  sw2.position.z = -(depth / 2 + 0.04);
+  grp.add(sw2);
+
+  // Rear window
+  const rearWP = [
+    [-1.06, 1.18],
+    [-1.06, 1.18, -1.04, 1.08, -1.10, 0.88],
+    [-0.74, 0.86],
+    [-0.74, 0.86, -0.80, 0.96, -0.80, 1.16],
+    [-0.80, 1.16, -0.94, 1.24, -1.06, 1.18],
+  ];
+  grp.add(makeBodyMesh(rearWP, depth * 0.72, glassMaterial(), 0.01));
+
+  // Chrome bumper strips
+  const bumperMat = chromeMaterial();
+  [[-2.18, 0.32, 0.62], [2.14, 0.32, 0.62]].forEach(([x, y, zW]) => {
+    const bGeo = new THREE.BoxGeometry(0.08, 0.10, zW);
+    const bMesh = new THREE.Mesh(bGeo, bumperMat);
+    bMesh.position.set(x, y, 0);
+    grp.add(bMesh);
+  });
+
+  // Chrome side trim
+  const trimGeo = new THREE.BoxGeometry(3.60, 0.04, 0.03);
+  [depth / 2 + 0.04, -(depth / 2 + 0.04)].forEach(z => {
+    const trim = new THREE.Mesh(trimGeo, bumperMat);
+    trim.position.set(0, 0.60, z);
+    grp.add(trim);
+  });
+
+  // Round headlights (classic look)
+  const hlMat = headlightMaterial(s.headlight);
+  [0.52, -0.52].forEach(z => {
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.10, 16, 16), hlMat);
+    hl.position.set(2.10, 0.60, z);
+    grp.add(hl);
+    const light = new THREE.PointLight(new THREE.Color(hlMat.color), 2, 3, 2);
+    light.position.set(2.04, 0.60, z);
+    grp.add(light);
+  });
+
+  // Round tail lights
+  [0.52, -0.52].forEach(z => {
+    const tl = new THREE.Mesh(new THREE.SphereGeometry(0.10, 16, 16), taillightMaterial());
+    tl.position.set(-2.12, 0.60, z);
+    grp.add(tl);
+  });
+
+  // Whitewall tyre option (handled in wheel assembly)
+  // Classic round side mirrors
+  [depth / 2 + 0.05, -(depth / 2 + 0.05)].forEach(z => {
+    const mirror = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 12, 12),
+      chromeMaterial()
+    );
+    mirror.scale.set(1.5, 1, 0.8);
+    mirror.position.set(1.22, 1.02, z);
+    grp.add(mirror);
+  });
+
+  const wY = 0.37;
+  addWheels(grp, [
+    [-1.22, wY, -(depth / 2 + 0.01)],
+    [-1.22, wY,   depth / 2 + 0.01 ],
+    [ 1.22, wY, -(depth / 2 + 0.01)],
+    [ 1.22, wY,   depth / 2 + 0.01 ],
+  ], s.wheel);
+
+  addSpoiler(grp, 'classic', s.spoiler, col, depth);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  SPOILER
+// ═════════════════════════════════════════════════════════════════════════════
+
+function addSpoiler(grp, shape, spoiler, col, depth) {
+  if (spoiler === 'none') return;
+
+  const paint = paintMaterial(col);
+
+  // Rear X position per shape
+  const rearX = { sedan: -2.15, supercar: -2.22, suv: -2.12, classic: -2.16 }[shape] || -2.15;
+  const baseY = { sedan:  0.74, supercar:  0.58, suv:  1.60, classic:  0.74 }[shape] || 0.74;
+
+  if (spoiler === 'wing') {
+    // Wing blade (horizontal)
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.06, depth * 0.95),
+      new THREE.MeshPhysicalMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 })
+    );
+    blade.position.set(rearX - 0.02, baseY + 0.38, 0);
+    grp.add(blade);
+
+    // Support stands
+    [-depth * 0.32, depth * 0.32].forEach(z => {
+      const stand = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.36, 0.04),
+        chromeMaterial()
+      );
+      stand.position.set(rearX - 0.02, baseY + 0.20, z);
+      grp.add(stand);
+    });
+
+  } else {
+    const heights = { small: 0.18, big: 0.34 };
+    const sh = heights[spoiler] || 0.18;
+    const spoilerMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, sh, depth * 0.80),
+      paint
+    );
+    spoilerMesh.position.set(rearX - 0.04, baseY + sh / 2, 0);
+    grp.add(spoilerMesh);
+  }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  BUILD / REFRESH THE CURRENT CAR
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildCar() {
+  if (!scene) return;
+
+  if (carGroup) {
+    scene.remove(carGroup);
+    carGroup.traverse(obj => {
+      if (obj.isMesh) { obj.geometry.dispose(); }
+    });
+  }
+
+  carGroup = new THREE.Group();
+
+  const builders = {
+    sedan:    buildSedan,
+    supercar: buildSupercar,
+    suv:      buildSuv,
+    classic:  buildClassic,
+  };
+  (builders[state.carShape] || buildSedan)(carGroup, state);
+
+  // Lift car so wheels sit on the podium surface
+  const wY = state.carShape === 'suv' ? 0.42 : 0.37;
+  carGroup.position.y = wY + 0.06;
+
+  scene.add(carGroup);
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  PICKER  (2-D canvas thumbnails)
+// ═════════════════════════════════════════════════════════════════════════════
 
 function initPicker() {
   const grid = document.getElementById('car-grid');
   grid.innerHTML = '';
+
   CARS.forEach(car => {
     const card = document.createElement('div');
     card.className = 'car-card';
+
     const cv = document.createElement('canvas');
     cv.width = 200; cv.height = 120;
+    drawThumbCar(cv.getContext('2d'), cv.width, cv.height, car.shape);
     card.appendChild(cv);
-    card.innerHTML += `<div class="car-label">${car.label}</div><div class="car-desc">${car.desc}</div>`;
+
+    card.innerHTML += `<div class="car-label">${car.label}</div>
+                       <div class="car-desc">${car.desc}</div>`;
     card.prepend(cv);
-    drawCar(cv.getContext('2d'), cv.width, cv.height, { ...state, carShape: car.shape, color: '#c0392b' }, true);
+
     card.onclick = () => {
       state.carShape  = car.shape;
-      state.color     = '#c0392b';
       state.wheel     = 'standard';
-      state.sticker   = 'none';
       state.headlight = 'normal';
       state.spoiler   = 'none';
+      document.getElementById('garage-title').textContent = car.label + ' – Garage';
       showScreen('screen-garage');
-      initGarage();
-      renderGarage();
+      initGaragePanel();
     };
     grid.appendChild(card);
   });
 }
 
-// ── Garage ─────────────────────────────────────
+// Quick 2-D thumbnail for the picker cards
+function drawThumbCar(ctx, W, H, shape) {
+  // showroom bg
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#ddd'); bg.addColorStop(1, '#bbb');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
-function initGarage() {
-  const swatchRow = document.getElementById('color-swatches');
-  swatchRow.innerHTML = '';
-  COLORS.forEach(c => {
-    const s = document.createElement('div');
-    s.className = 'swatch' + (state.color === c.hex ? ' active' : '');
-    s.title = c.name;
-    if (c.hex === 'rainbow') {
-      s.style.background = 'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)';
-    } else if (c.hex === 'lava') {
-      s.style.background = 'linear-gradient(135deg,#ff4500,#ff8c00,#ff0000)';
-    } else {
-      s.style.background = c.hex;
-    }
-    s.onclick = () => {
-      state.color = c.hex;
-      document.getElementById('custom-color').value = (c.hex.startsWith('#') ? c.hex : '#c0392b');
-      document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
-      s.classList.add('active');
-      renderGarage();
-    };
-    swatchRow.appendChild(s);
+  // simple silhouette based on shape
+  const silhouettes = {
+    sedan:    [[0.08,0.70],[0.08,0.55],[0.25,0.40],[0.55,0.32],[0.68,0.32],[0.82,0.40],[0.90,0.48],[0.92,0.70]],
+    supercar: [[0.06,0.72],[0.06,0.60],[0.20,0.42],[0.45,0.30],[0.60,0.30],[0.75,0.38],[0.88,0.50],[0.94,0.72]],
+    suv:      [[0.08,0.72],[0.08,0.52],[0.14,0.28],[0.22,0.22],[0.78,0.22],[0.88,0.28],[0.92,0.50],[0.92,0.72]],
+    classic:  [[0.09,0.72],[0.09,0.60],[0.22,0.36],[0.38,0.28],[0.62,0.28],[0.78,0.36],[0.90,0.58],[0.91,0.72]],
+  };
+  const pts = silhouettes[shape] || silhouettes.sedan;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0]*W, pts[0][1]*H);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0]*W, pts[i][1]*H);
+  ctx.closePath();
+  const cg = ctx.createLinearGradient(0, H*0.28, 0, H*0.72);
+  cg.addColorStop(0, '#e04030'); cg.addColorStop(0.4, '#c0392b'); cg.addColorStop(1, '#801010');
+  ctx.fillStyle = cg; ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1.5; ctx.stroke();
+  // windows
+  ctx.globalAlpha = 0.6;
+  ctx.fillStyle = '#1a3045';
+  ctx.fillRect(W*0.30, H*0.33, W*0.35, H*0.14);
+  ctx.restore();
+  // wheels
+  [0.22, 0.76].forEach(x => {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x*W, H*0.72, H*0.10, 0, Math.PI*2);
+    ctx.fillStyle = '#111'; ctx.fill();
+    ctx.beginPath(); ctx.arc(x*W, H*0.72, H*0.065, 0, Math.PI*2);
+    ctx.fillStyle = '#ccc'; ctx.fill();
+    ctx.restore();
   });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  GARAGE PANEL
+// ═════════════════════════════════════════════════════════════════════════════
+
+function initGaragePanel() {
+  // Color swatches
+  const row = document.getElementById('color-swatches');
+  row.innerHTML = '';
+  COLORS.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'swatch' + (state.color === c.hex ? ' active' : '');
+    sw.title = c.name;
+    sw.style.background = c.hex;
+    sw.onclick = () => {
+      state.color = c.hex;
+      document.getElementById('custom-color').value = c.hex;
+      row.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
+      sw.classList.add('active');
+      buildCar();
+    };
+    row.appendChild(sw);
+  });
+
   buildOptBtns('wheel-btns',     WHEELS,     'wheel');
-  buildOptBtns('sticker-btns',   STICKERS,   'sticker');
   buildOptBtns('headlight-btns', HEADLIGHTS, 'headlight');
   buildOptBtns('spoiler-btns',   SPOILERS,   'spoiler');
 }
@@ -162,7 +1263,7 @@ function buildOptBtns(containerId, options, stateKey) {
       state[stateKey] = opt.id;
       row.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      renderGarage();
+      buildCar();
     };
     row.appendChild(btn);
   });
@@ -170,1057 +1271,113 @@ function buildOptBtns(containerId, options, stateKey) {
 
 function setCustomColor(hex) {
   state.color = hex;
-  document.querySelectorAll('.swatch').forEach(x => x.classList.remove('active'));
-  renderGarage();
+  document.querySelectorAll('#color-swatches .swatch').forEach(x => x.classList.remove('active'));
+  buildCar();
 }
 
-function renderGarage() {
-  const cv = document.getElementById('car-canvas');
-  drawCar(cv.getContext('2d'), cv.width, cv.height, state, false);
-}
+// ═════════════════════════════════════════════════════════════════════════════
+//  PHOTO – COLOUR EXTRACTION
+// ═════════════════════════════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════
-//  SHOWROOM DRAW ENGINE
-// ══════════════════════════════════════════════
+function extractColorFromPhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
 
-function drawCar(ctx, W, H, s, small) {
-  ctx.clearRect(0, 0, W, H);
-  drawShowroom(ctx, W, H, small);
-  const shapes = { sedan: drawSedan, supercar: drawSupercar, suv: drawSuv, classic: drawClassic };
-  (shapes[s.carShape] || drawSedan)(ctx, W, H, s, small);
-}
+  const img = new Image();
+  img.onload = () => {
+    // Draw to a small canvas and sample
+    const cv  = document.createElement('canvas');
+    cv.width  = 100; cv.height = 100;
+    const ctx = cv.getContext('2d');
+    ctx.drawImage(img, 0, 0, 100, 100);
 
-// ── Showroom Environment ───────────────────────
+    // Sample a region in the centre (where the car body usually is)
+    const region = ctx.getImageData(20, 25, 60, 50);
+    const data   = region.data;
 
-function drawShowroom(ctx, W, H, small) {
-  // Background wall gradient (bright showroom white)
-  const wallGrad = ctx.createLinearGradient(0, 0, 0, H * 0.72);
-  wallGrad.addColorStop(0,   '#d8d8d8');
-  wallGrad.addColorStop(0.4, '#f2f2f2');
-  wallGrad.addColorStop(1,   '#e0e0e0');
-  ctx.fillStyle = wallGrad;
-  ctx.fillRect(0, 0, W, H * 0.72);
-
-  // Overhead spotlight bloom
-  if (!small) {
-    const spot = ctx.createRadialGradient(W * 0.5, 0, 0, W * 0.5, H * 0.25, W * 0.55);
-    spot.addColorStop(0,   'rgba(255,255,255,0.6)');
-    spot.addColorStop(0.5, 'rgba(255,255,255,0.15)');
-    spot.addColorStop(1,   'rgba(0,0,0,0)');
-    ctx.fillStyle = spot;
-    ctx.fillRect(0, 0, W, H * 0.72);
-  }
-
-  // Showroom floor
-  const floorY = H * 0.72;
-  const floorGrad = ctx.createLinearGradient(0, floorY, 0, H);
-  floorGrad.addColorStop(0,   '#b8b8b8');
-  floorGrad.addColorStop(0.25, '#cccccc');
-  floorGrad.addColorStop(1,   '#a0a0a0');
-  ctx.fillStyle = floorGrad;
-  ctx.fillRect(0, floorY, W, H - floorY);
-
-  // Floor highlight stripe (reflection of ceiling light)
-  if (!small) {
-    const stripe = ctx.createLinearGradient(0, floorY, W, floorY);
-    stripe.addColorStop(0,   'rgba(255,255,255,0)');
-    stripe.addColorStop(0.35, 'rgba(255,255,255,0.25)');
-    stripe.addColorStop(0.65, 'rgba(255,255,255,0.25)');
-    stripe.addColorStop(1,   'rgba(255,255,255,0)');
-    ctx.fillStyle = stripe;
-    ctx.fillRect(0, floorY, W, 3);
-  }
-
-  // Subtle floor grid lines
-  if (!small) {
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < W; x += W * 0.12) {
-      ctx.beginPath();
-      ctx.moveTo(x, floorY);
-      ctx.lineTo(W * 0.5 + (x - W * 0.5) * 2.5, H);
-      ctx.stroke();
+    // Build histogram of saturated colours (skip grey/dark/white)
+    const buckets = {};
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const { h, s, v } = rgbToHsv(r, g, b);
+      if (s < 0.15 || v < 0.12 || v > 0.96) continue; // skip grey / black / white
+      const hBucket = Math.round(h / 12) * 12;
+      buckets[hBucket] = (buckets[hBucket] || 0) + 1;
     }
-    ctx.restore();
-  }
-}
 
-// ── Color Utilities ────────────────────────────
+    // Find dominant hue bucket
+    let bestH = 0, bestCount = 0;
+    for (const [hStr, count] of Object.entries(buckets)) {
+      if (count > bestCount) { bestCount = count; bestH = parseInt(hStr); }
+    }
 
-function hexToRgb(hex) {
-  if (!hex.startsWith('#')) return [150, 150, 150];
-  const r = parseInt(hex.slice(1, 3), 16) || 0;
-  const g = parseInt(hex.slice(3, 5), 16) || 0;
-  const b = parseInt(hex.slice(5, 7), 16) || 0;
-  return [r, g, b];
-}
+    // Convert back to a nice saturated version of that hue
+    const extractedRgb = hsvToRgb(bestH / 360, 0.78, 0.72);
+    const hexColor = rgbToHex(...extractedRgb);
 
-function createPaintGradient(ctx, color, x, y, w, h) {
-  if (color === 'rainbow') {
-    const hg = ctx.createLinearGradient(x, y, x + w, y);
-    hg.addColorStop(0,    '#c0392b');
-    hg.addColorStop(0.17, '#e67e22');
-    hg.addColorStop(0.33, '#d4ac0d');
-    hg.addColorStop(0.5,  '#1e7e34');
-    hg.addColorStop(0.67, '#1f618d');
-    hg.addColorStop(0.83, '#6c3483');
-    hg.addColorStop(1,    '#c0185c');
-    return hg;
-  }
-  if (color === 'lava') {
-    const lg = ctx.createLinearGradient(x, y, x, y + h);
-    lg.addColorStop(0,   '#ff8c00');
-    lg.addColorStop(0.3, '#ff4500');
-    lg.addColorStop(0.6, '#cc2200');
-    lg.addColorStop(1,   '#7a1000');
-    return lg;
-  }
-  const [r, g, b] = hexToRgb(color);
-  const grad = ctx.createLinearGradient(x, y, x, y + h);
-  // Highlight → base → shadow → subtle reflection → deep shadow
-  grad.addColorStop(0,    `rgb(${Math.min(255,r+100)},${Math.min(255,g+100)},${Math.min(255,b+100)})`);
-  grad.addColorStop(0.15, `rgb(${Math.min(255,r+55)},${Math.min(255,g+55)},${Math.min(255,b+55)})`);
-  grad.addColorStop(0.42, `rgb(${r},${g},${b})`);
-  grad.addColorStop(0.62, `rgb(${Math.max(0,r-45)},${Math.max(0,g-45)},${Math.max(0,b-45)})`);
-  grad.addColorStop(0.80, `rgb(${Math.min(255,r+20)},${Math.min(255,g+20)},${Math.min(255,b+20)})`);
-  grad.addColorStop(1,    `rgb(${Math.max(0,r-75)},${Math.max(0,g-75)},${Math.max(0,b-75)})`);
-  return grad;
-}
+    // Apply
+    state.color = hexColor;
+    buildCar();
 
-// Returns a darkened color string for trim/shadow
-function paintDark(color, amt) {
-  if (color === 'rainbow' || color === 'lava') return '#555';
-  const [r, g, b] = hexToRgb(color);
-  return `rgb(${Math.max(0,r-amt)},${Math.max(0,g-amt)},${Math.max(0,b-amt)})`;
-}
+    // Show preview
+    const thumb     = document.getElementById('photo-thumb');
+    const swatch    = document.getElementById('extracted-swatch');
+    const nameEl    = document.getElementById('extracted-name');
+    const resultDiv = document.getElementById('photo-result');
 
-// ── Realistic Wheel ────────────────────────────
+    thumb.src           = img.src;
+    swatch.style.background  = hexColor;
+    nameEl.textContent  = 'Matched: ' + hexColor;
+    resultDiv.classList.remove('hidden');
+    document.getElementById('custom-color').value = hexColor;
 
-function drawWheel(ctx, cx, cy, r, style) {
-  ctx.save();
-
-  // Drop shadow
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur  = r * 0.5;
-  ctx.shadowOffsetY = r * 0.2;
-
-  // Outer tyre
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  const tyreGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.35, r * 0.05, cx, cy, r);
-  tyreGrad.addColorStop(0,   '#4a4a4a');
-  tyreGrad.addColorStop(0.55, '#1e1e1e');
-  tyreGrad.addColorStop(1,   '#0a0a0a');
-  ctx.fillStyle = tyreGrad;
-  ctx.fill();
-  ctx.shadowColor = 'transparent';
-
-  // Tyre sidewall highlight
-  ctx.beginPath();
-  ctx.arc(cx, cy, r * 0.96, Math.PI * 1.05, Math.PI * 1.65);
-  ctx.strokeStyle = 'rgba(90,90,90,0.7)';
-  ctx.lineWidth   = r * 0.07;
-  ctx.stroke();
-
-  // Rim base
-  const rimR = r * 0.70;
-  ctx.beginPath();
-  ctx.arc(cx, cy, rimR, 0, Math.PI * 2);
-  const rimCols = {
-    standard: ['#b0b0b0', '#e0e0e0', '#808080'],
-    sport:    ['#9090a0', '#d0d0e8', '#505060'],
-    gold:     ['#a07810', '#ffd700', '#7a5a00'],
-    spiky:    ['#aa2222', '#ff5555', '#660000'],
+    showToast('🎨 Colour matched from photo!');
   };
-  const [rc0, rc1, rc2] = rimCols[style] || rimCols.standard;
-  const rimGrad = ctx.createRadialGradient(cx - rimR * 0.3, cy - rimR * 0.3, 0, cx, cy, rimR);
-  rimGrad.addColorStop(0,   rc1);
-  rimGrad.addColorStop(0.55, rc0);
-  rimGrad.addColorStop(1,   rc2);
-  ctx.fillStyle = rimGrad;
-  ctx.fill();
-
-  // Spokes
-  ctx.save();
-  ctx.translate(cx, cy);
-  const spokeCount = (style === 'spiky') ? 8 : (style === 'gold') ? 10 : 5;
-  const spokeCol   = (style === 'gold') ? '#ffd700' : (style === 'spiky') ? '#ff4444' : '#c8c8c8';
-  const spokeW     = (style === 'spiky') ? r * 0.07 : r * 0.10;
-  for (let i = 0; i < spokeCount; i++) {
-    const angle = (i / spokeCount) * Math.PI * 2 - Math.PI / 2;
-    ctx.beginPath();
-    ctx.moveTo(Math.cos(angle) * rimR * 0.15, Math.sin(angle) * rimR * 0.15);
-    ctx.lineTo(Math.cos(angle) * rimR * 0.88, Math.sin(angle) * rimR * 0.88);
-    ctx.strokeStyle = spokeCol;
-    ctx.lineWidth   = spokeW;
-    ctx.lineCap     = 'round';
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  // Inner rim ring
-  ctx.beginPath();
-  ctx.arc(cx, cy, rimR * 0.88, 0, Math.PI * 2);
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-  ctx.lineWidth   = rimR * 0.04;
-  ctx.stroke();
-
-  // Center cap
-  const capR = rimR * 0.18;
-  ctx.beginPath();
-  ctx.arc(cx, cy, capR, 0, Math.PI * 2);
-  const capGrad = ctx.createRadialGradient(cx - capR * 0.3, cy - capR * 0.3, 0, cx, cy, capR);
-  capGrad.addColorStop(0, '#e8e8e8');
-  capGrad.addColorStop(1, '#555');
-  ctx.fillStyle = capGrad;
-  ctx.fill();
-
-  // Specular glint on tyre
-  ctx.beginPath();
-  ctx.arc(cx - r * 0.32, cy - r * 0.34, r * 0.10, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.07)';
-  ctx.fill();
-
-  ctx.restore();
+  img.src = URL.createObjectURL(file);
 }
 
-// ── Headlight ──────────────────────────────────
+// ── Colour space helpers ────────────────────────────────────────────────────
 
-function drawHeadlight(ctx, x, y, rw, rh, style) {
-  const palettes = {
-    normal: { glow: 'rgba(255,255,180,0.45)', lens: '#ffffd0', inner: '#ffffff' },
-    led:    { glow: 'rgba(100,180,255,0.55)', lens: '#cce8ff', inner: '#ffffff' },
-    neon:   { glow: 'rgba(0,255,150,0.55)',   lens: '#ccffe8', inner: '#80ffcc' },
-    laser:  { glow: 'rgba(255,40,40,0.60)',   lens: '#ffcccc', inner: '#ff4444' },
-  };
-  const p = palettes[style] || palettes.normal;
-
-  ctx.save();
-
-  // Outer glow
-  const gr = Math.max(rw, rh) * 2.5;
-  const glow = ctx.createRadialGradient(x, y, 0, x, y, gr);
-  glow.addColorStop(0,   p.glow);
-  glow.addColorStop(0.5, p.glow.replace(/[\d.]+\)$/, '0.08)'));
-  glow.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.ellipse(x, y, gr, gr * 0.65, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Housing
-  ctx.beginPath();
-  ctx.ellipse(x, y, rw + 2.5, rh + 2.5, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fill();
-
-  // Lens
-  ctx.beginPath();
-  ctx.ellipse(x, y, rw, rh, 0, 0, Math.PI * 2);
-  const lensGrad = ctx.createRadialGradient(x - rw * 0.25, y - rh * 0.25, 0, x, y, Math.max(rw, rh));
-  lensGrad.addColorStop(0,   p.inner);
-  lensGrad.addColorStop(0.5, p.lens);
-  lensGrad.addColorStop(1,   '#777');
-  ctx.fillStyle = lensGrad;
-  ctx.fill();
-
-  // Specular dot
-  ctx.beginPath();
-  ctx.ellipse(x - rw * 0.28, y - rh * 0.28, rw * 0.28, rh * 0.28, 0, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fill();
-
-  ctx.restore();
-}
-
-// ── Window glass helper ────────────────────────
-
-function drawWindow(ctx, points, small) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(...points[0]);
-  for (let i = 1; i < points.length; i++) {
-    if (points[i].length === 6) {
-      ctx.bezierCurveTo(...points[i]);
-    } else {
-      ctx.lineTo(...points[i]);
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  let h = 0;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  if (d !== 0) {
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
     }
   }
-  ctx.closePath();
-  ctx.fillStyle = small ? 'rgba(20,55,90,0.70)' : 'rgba(14,42,72,0.82)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  if (!small) {
-    // Glass shine streak
-    ctx.save();
-    ctx.clip();
-    ctx.beginPath();
-    ctx.moveTo(points[0][0] + 6, points[0][1] + 4);
-    ctx.lineTo(points[0][0] + 18, points[0][1] + 4);
-    const last = points[points.length - 1];
-    const lx = last.length === 6 ? last[4] : last[0];
-    const ly = last.length === 6 ? last[5] : last[1];
-    ctx.lineTo(lx + 8, ly + 8);
-    ctx.lineTo(lx - 4, ly + 8);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    ctx.fill();
-    ctx.restore();
-  }
-  ctx.restore();
+  return { h: h * 360, s, v };
 }
 
-// ── Car shadow on floor ────────────────────────
-
-function drawFloorShadow(ctx, W, H, cx, rx, ry) {
-  ctx.save();
-  const sg = ctx.createRadialGradient(cx, H * 0.72, 0, cx, H * 0.72, rx);
-  sg.addColorStop(0,   'rgba(0,0,0,0.42)');
-  sg.addColorStop(0.55, 'rgba(0,0,0,0.15)');
-  sg.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = sg;
-  ctx.beginPath();
-  ctx.ellipse(cx, H * 0.722, rx, ry, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+function hsvToRgb(h, s, v) {
+  let r, g, b;
+  const i = Math.floor(h * 6);
+  const f = h * 6 - i;
+  const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  switch (i % 6) {
+    case 0: r=v; g=t; b=p; break;
+    case 1: r=q; g=v; b=p; break;
+    case 2: r=p; g=v; b=t; break;
+    case 3: r=p; g=q; b=v; break;
+    case 4: r=t; g=p; b=v; break;
+    case 5: r=v; g=p; b=q; break;
+  }
+  return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
 }
 
-// ══════════════════════════════════════════════
-//  CAR SHAPES
-// ══════════════════════════════════════════════
-
-// ── SEDAN ──────────────────────────────────────
-
-function drawSedan(ctx, W, H, s, small) {
-  const fY  = H * 0.72;           // floor Y (showroom floor)
-  const wR  = Math.max(10, H * 0.118);
-  const wCY = fY - wR;            // wheel center Y
-  const rwX = W * 0.255;          // rear wheel X
-  const fwX = W * 0.745;          // front wheel X
-
-  // Paint gradient over body height
-  const bTop = fY - H * 0.58;
-  const bH   = H * 0.58;
-  const paint = createPaintGradient(ctx, s.color, W * 0.09, bTop, W * 0.82, bH);
-
-  // ── Body silhouette ──────────────────────────
-  ctx.save();
-  ctx.beginPath();
-
-  // Rear bumper bottom-left
-  ctx.moveTo(W * 0.088, fY);
-
-  // up rear bumper face
-  ctx.bezierCurveTo(W * 0.075, fY, W * 0.07, fY - H * 0.06, W * 0.075, fY - H * 0.15);
-  // rear trunk top edge
-  ctx.lineTo(W * 0.115, fY - H * 0.235);
-  // trunk lid
-  ctx.lineTo(W * 0.225, fY - H * 0.27);
-  // C-pillar / rear window slope
-  ctx.bezierCurveTo(W * 0.265, fY - H * 0.275, W * 0.305, fY - H * 0.38, W * 0.325, fY - H * 0.445);
-  // roofline rear
-  ctx.lineTo(W * 0.355, fY - H * 0.555);
-  // roof
-  ctx.bezierCurveTo(W * 0.375, fY - H * 0.572, W * 0.565, fY - H * 0.572, W * 0.59, fY - H * 0.555);
-  // A-pillar
-  ctx.bezierCurveTo(W * 0.625, fY - H * 0.52, W * 0.655, fY - H * 0.44, W * 0.665, fY - H * 0.37);
-  // windshield base to hood
-  ctx.lineTo(W * 0.72, fY - H * 0.305);
-  // hood slope
-  ctx.bezierCurveTo(W * 0.80, fY - H * 0.295, W * 0.87, fY - H * 0.285, W * 0.905, fY - H * 0.265);
-  // front nose
-  ctx.bezierCurveTo(W * 0.935, fY - H * 0.255, W * 0.945, fY - H * 0.195, W * 0.945, fY - H * 0.13);
-  // front bumper
-  ctx.bezierCurveTo(W * 0.948, fY - H * 0.055, W * 0.935, fY, W * 0.915, fY);
-
-  // bottom – front wheel arch
-  ctx.lineTo(fwX + wR * 1.12, fY);
-  ctx.arc(fwX, wCY, wR * 1.12, Math.PI * 0.5, Math.PI * 0.5, true); // no-op arc for continuity
-  // draw arch as bezier instead for smooth clip
-  ctx.lineTo(fwX + wR * 1.12, fY);
-  archCut(ctx, fwX, wCY, wR * 1.12);
-
-  // between arches
-  ctx.lineTo(rwX + wR * 1.12, fY);
-  archCut(ctx, rwX, wCY, wR * 1.12);
-
-  ctx.lineTo(W * 0.088, fY);
-  ctx.closePath();
-
-  ctx.fillStyle = paint;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.30)';
-  ctx.lineWidth   = 1.5;
-  ctx.stroke();
-  ctx.restore();
-
-  // ── Roof darker shade ─────────────────────────
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.325, fY - H * 0.445);
-  ctx.lineTo(W * 0.355, fY - H * 0.555);
-  ctx.bezierCurveTo(W * 0.375, fY - H * 0.572, W * 0.565, fY - H * 0.572, W * 0.59, fY - H * 0.555);
-  ctx.bezierCurveTo(W * 0.625, fY - H * 0.52, W * 0.655, fY - H * 0.44, W * 0.665, fY - H * 0.37);
-  ctx.bezierCurveTo(W * 0.62, fY - H * 0.365, W * 0.58, fY - H * 0.37, W * 0.56, fY - H * 0.38);
-  ctx.bezierCurveTo(W * 0.45, fY - H * 0.38, W * 0.38, fY - H * 0.395, W * 0.325, fY - H * 0.445);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0,0,0,0.12)';
-  ctx.fill();
-  ctx.restore();
-
-  // ── Door panel line ───────────────────────────
-  if (!small) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(W * 0.225, fY - H * 0.27);
-    ctx.bezierCurveTo(W * 0.38, fY - H * 0.28, W * 0.59, fY - H * 0.275, W * 0.72, fY - H * 0.305);
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-    // Vertical door split
-    ctx.beginPath();
-    ctx.moveTo(W * 0.49, fY - H * 0.555);
-    ctx.lineTo(W * 0.49, fY - H * 0.285);
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // ── Windows ───────────────────────────────────
-  // Front window
-  drawWindow(ctx, [
-    [W*0.595, fY - H*0.445],
-    [W*0.600, fY - H*0.530],
-    [W*0.580, fY - H*0.555],
-    [W*0.500, fY - H*0.555],
-    [W*0.494, fY - H*0.442],
-    [W*0.548, fY - H*0.428, W*0.580, fY - H*0.435, W*0.595, fY - H*0.445],
-  ], small);
-
-  // Rear window
-  drawWindow(ctx, [
-    [W*0.490, fY - H*0.555],
-    [W*0.370, fY - H*0.555],
-    [W*0.325, fY - H*0.445],
-    [W*0.400, fY - H*0.442],
-    [W*0.484, fY - H*0.442],
-  ], small);
-
-  // Windshield
-  drawWindow(ctx, [
-    [W*0.600, fY - H*0.530],
-    [W*0.595, fY - H*0.445],
-    [W*0.660, fY - H*0.370],
-    [W*0.675, fY - H*0.375, W*0.645, fY - H*0.455, W*0.635, fY - H*0.515],
-    [W*0.620, fY - H*0.525],
-  ], small);
-
-  // ── Grille ────────────────────────────────────
-  if (!small) {
-    ctx.save();
-    const grX = W * 0.910, grY = fY - H * 0.19, grW = W * 0.034, grH = H * 0.09;
-    const grilleGrad = ctx.createLinearGradient(grX, 0, grX + grW, 0);
-    grilleGrad.addColorStop(0, '#555');
-    grilleGrad.addColorStop(0.5, '#aaa');
-    grilleGrad.addColorStop(1, '#555');
-    ctx.fillStyle = grilleGrad;
-    roundRect(ctx, grX, grY, grW, grH, 3);
-    ctx.fill();
-    ctx.strokeStyle = '#333';
-    ctx.lineWidth = 0.8;
-    for (let gy = grY + H * 0.017; gy < grY + grH - 2; gy += H * 0.02) {
-      ctx.beginPath();
-      ctx.moveTo(grX + 1, gy);
-      ctx.lineTo(grX + grW - 1, gy);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // ── Headlights & Taillights ───────────────────
-  if (!small) {
-    drawHeadlight(ctx, W * 0.934, fY - H * 0.195, W * 0.018, H * 0.038, s.headlight);
-    // Tail light
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(W * 0.088, fY - H * 0.195, W * 0.016, H * 0.035, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#8b0000';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(W * 0.088, fY - H * 0.195, W * 0.008, H * 0.016, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff4444';
-    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 8;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // ── Spoiler ───────────────────────────────────
-  if (!small) drawSpoilerOnCar(ctx, W, H, 'sedan', s.spoiler, s.color, fY);
-
-  // ── Sticker ───────────────────────────────────
-  if (!small) drawSticker(ctx, W, H, s.sticker, s.color);
-
-  // ── Wheels ───────────────────────────────────
-  drawWheel(ctx, rwX, wCY, wR, s.wheel);
-  drawWheel(ctx, fwX, wCY, wR, s.wheel);
-
-  // ── Floor shadow ─────────────────────────────
-  drawFloorShadow(ctx, W, H, W * 0.5, W * 0.33, H * 0.025);
+function rgbToHex(r, g, b) {
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
-// helper: smooth wheel-arch cutout using bezier
-function archCut(ctx, cx, cy, r) {
-  // Walk from right side of arch over the top to the left
-  ctx.bezierCurveTo(
-    cx + r,     cy + r * 0.1,
-    cx + r,     cy - r,
-    cx,         cy - r
-  );
-  ctx.bezierCurveTo(
-    cx - r,     cy - r,
-    cx - r,     cy + r * 0.1,
-    cx - r,     cy + r * 0.5
-  );
-}
-
-// ── SUPERCAR ───────────────────────────────────
-
-function drawSupercar(ctx, W, H, s, small) {
-  const fY  = H * 0.72;
-  const wR  = Math.max(10, H * 0.122);
-  const wCY = fY - wR;
-  const rwX = W * 0.235;
-  const fwX = W * 0.755;
-
-  const bTop = fY - H * 0.52;
-  const paint = createPaintGradient(ctx, s.color, W * 0.05, bTop, W * 0.90, H * 0.52);
-
-  // Body
-  ctx.save();
-  ctx.beginPath();
-  // rear
-  ctx.moveTo(W * 0.065, fY);
-  ctx.bezierCurveTo(W * 0.052, fY, W * 0.045, fY - H * 0.04, W * 0.050, fY - H * 0.09);
-  // rear deck / engine cover (supercars have flat rear)
-  ctx.lineTo(W * 0.080, fY - H * 0.155);
-  ctx.lineTo(W * 0.150, fY - H * 0.19);
-  // rear window up
-  ctx.bezierCurveTo(W * 0.195, fY - H * 0.21, W * 0.265, fY - H * 0.39, W * 0.285, fY - H * 0.44);
-  // roof (very short and low)
-  ctx.lineTo(W * 0.305, fY - H * 0.495);
-  ctx.bezierCurveTo(W * 0.325, fY - H * 0.515, W * 0.545, fY - H * 0.515, W * 0.565, fY - H * 0.50);
-  // windshield (steep)
-  ctx.bezierCurveTo(W * 0.605, fY - H * 0.47, W * 0.655, fY - H * 0.38, W * 0.675, fY - H * 0.31);
-  // long hood
-  ctx.bezierCurveTo(W * 0.75, fY - H * 0.295, W * 0.85, fY - H * 0.275, W * 0.90, fY - H * 0.26);
-  // front nose (very low and sharp)
-  ctx.bezierCurveTo(W * 0.938, fY - H * 0.25, W * 0.950, fY - H * 0.20, W * 0.950, fY - H * 0.115);
-  ctx.bezierCurveTo(W * 0.952, fY - H * 0.04, W * 0.940, fY, W * 0.920, fY);
-
-  // front wheel arch
-  ctx.lineTo(fwX + wR * 1.12, fY);
-  archCut(ctx, fwX, wCY, wR * 1.12);
-  // rear wheel arch
-  ctx.lineTo(rwX + wR * 1.12, fY);
-  archCut(ctx, rwX, wCY, wR * 1.12);
-  ctx.lineTo(W * 0.065, fY);
-  ctx.closePath();
-
-  ctx.fillStyle = paint;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.30)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-
-  // Roof shade
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.285, fY - H * 0.44);
-  ctx.lineTo(W * 0.305, fY - H * 0.495);
-  ctx.bezierCurveTo(W * 0.325, fY - H * 0.515, W * 0.545, fY - H * 0.515, W * 0.565, fY - H * 0.50);
-  ctx.bezierCurveTo(W * 0.545, fY - H * 0.485, W * 0.37, fY - H * 0.475, W * 0.285, fY - H * 0.44);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0,0,0,0.14)';
-  ctx.fill();
-  ctx.restore();
-
-  // Windshield
-  drawWindow(ctx, [
-    [W*0.565, fY - H*0.50],
-    [W*0.605, fY - H*0.47, W*0.655, fY - H*0.38, W*0.675, fY - H*0.31],
-    [W*0.645, fY - H*0.302],
-    [W*0.605, fY - H*0.456, W*0.565, fY - H*0.484, W*0.548, fY - H*0.494],
-  ], small);
-
-  // Side windows (one large glass section)
-  drawWindow(ctx, [
-    [W*0.285, fY - H*0.44],
-    [W*0.305, fY - H*0.495],
-    [W*0.548, fY - H*0.494],
-    [W*0.548, fY - H*0.408],
-    [W*0.42,  fY - H*0.39, W*0.33, fY - H*0.40, W*0.285, fY - H*0.44],
-  ], small);
-
-  // Rear glass
-  drawWindow(ctx, [
-    [W*0.150, fY - H*0.19],
-    [W*0.215, fY - H*0.205, W*0.265, fY - H*0.33, W*0.285, fY - H*0.44],
-    [W*0.240, fY - H*0.42],
-    [W*0.215, fY - H*0.32, W*0.170, fY - H*0.23, W*0.160, fY - H*0.20],
-  ], small);
-
-  // Grille / front splitter
-  if (!small) {
-    ctx.save();
-    ctx.beginPath();
-    // Low front splitter
-    roundRect(ctx, W * 0.905, fY - H * 0.065, W * 0.044, H * 0.065, 2);
-    const sg = ctx.createLinearGradient(W * 0.905, 0, W * 0.949, 0);
-    sg.addColorStop(0, '#222'); sg.addColorStop(0.5, '#888'); sg.addColorStop(1, '#222');
-    ctx.fillStyle = sg;
-    ctx.fill();
-
-    // Air intake on flank
-    ctx.beginPath();
-    ctx.ellipse(W * 0.88, fY - H * 0.19, W * 0.022, H * 0.028, -0.2, 0, Math.PI * 2);
-    ctx.fillStyle = '#111';
-    ctx.fill();
-    ctx.restore();
-  }
-
-  if (!small) {
-    drawHeadlight(ctx, W * 0.940, fY - H * 0.175, W * 0.016, H * 0.030, s.headlight);
-    // Tail light strip
-    ctx.save();
-    ctx.beginPath();
-    roundRect(ctx, W * 0.053, fY - H * 0.145, W * 0.025, H * 0.065, 2);
-    ctx.fillStyle = '#8b0000';
-    ctx.fill();
-    ctx.fillStyle = '#ff3333';
-    ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 10;
-    roundRect(ctx, W * 0.056, fY - H * 0.138, W * 0.018, H * 0.05, 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  if (!small) drawSpoilerOnCar(ctx, W, H, 'supercar', s.spoiler, s.color, fY);
-  if (!small) drawSticker(ctx, W, H, s.sticker, s.color);
-
-  drawWheel(ctx, rwX, wCY, wR, s.wheel);
-  drawWheel(ctx, fwX, wCY, wR, s.wheel);
-  drawFloorShadow(ctx, W, H, W * 0.5, W * 0.36, H * 0.024);
-}
-
-// ── SUV ────────────────────────────────────────
-
-function drawSuv(ctx, W, H, s, small) {
-  const fY  = H * 0.72;
-  const wR  = Math.max(10, H * 0.128);
-  const wCY = fY - wR;
-  const rwX = W * 0.26;
-  const fwX = W * 0.74;
-
-  const bTop = fY - H * 0.66;
-  const paint = createPaintGradient(ctx, s.color, W * 0.08, bTop, W * 0.84, H * 0.66);
-
-  // Body
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.090, fY);
-  // rear face (tall)
-  ctx.bezierCurveTo(W * 0.075, fY, W * 0.068, fY - H * 0.07, W * 0.070, fY - H * 0.18);
-  // rear window pillar
-  ctx.lineTo(W * 0.080, fY - H * 0.38);
-  // roof rear
-  ctx.bezierCurveTo(W * 0.090, fY - H * 0.58, W * 0.12, fY - H * 0.65, W * 0.155, fY - H * 0.665);
-  // roofline
-  ctx.lineTo(W * 0.730, fY - H * 0.665);
-  // A-pillar / windshield
-  ctx.bezierCurveTo(W * 0.80, fY - H * 0.66, W * 0.862, fY - H * 0.60, W * 0.88, fY - H * 0.52);
-  // short hood
-  ctx.lineTo(W * 0.895, fY - H * 0.40);
-  ctx.bezierCurveTo(W * 0.91, fY - H * 0.36, W * 0.928, fY - H * 0.32, W * 0.935, fY - H * 0.28);
-  // front face
-  ctx.bezierCurveTo(W * 0.945, fY - H * 0.22, W * 0.945, fY - H * 0.12, W * 0.940, fY);
-
-  // front arch
-  ctx.lineTo(fwX + wR * 1.12, fY);
-  archCut(ctx, fwX, wCY, wR * 1.12);
-  // rear arch
-  ctx.lineTo(rwX + wR * 1.12, fY);
-  archCut(ctx, rwX, wCY, wR * 1.12);
-  ctx.lineTo(W * 0.090, fY);
-  ctx.closePath();
-
-  ctx.fillStyle = paint;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.28)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-
-  // Roof shade band
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.155, fY - H * 0.665);
-  ctx.lineTo(W * 0.730, fY - H * 0.665);
-  ctx.bezierCurveTo(W * 0.750, fY - H * 0.660, W * 0.760, fY - H * 0.645, W * 0.758, fY - H * 0.630);
-  ctx.lineTo(W * 0.158, fY - H * 0.630);
-  ctx.bezierCurveTo(W * 0.140, fY - H * 0.645, W * 0.142, fY - H * 0.660, W * 0.155, fY - H * 0.665);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.fill();
-  ctx.restore();
-
-  // Door line
-  if (!small) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(W * 0.09, fY - H * 0.32);
-    ctx.bezierCurveTo(W * 0.30, fY - H * 0.315, W * 0.70, fY - H * 0.315, W * 0.895, fY - H * 0.38);
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    // Door dividers
-    [W * 0.42, W * 0.62].forEach(dx => {
-      ctx.beginPath();
-      ctx.moveTo(dx, fY - H * 0.64);
-      ctx.lineTo(dx, fY - H * 0.32);
-      ctx.strokeStyle = 'rgba(0,0,0,0.13)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    });
-    ctx.restore();
-  }
-
-  // Windows
-  drawWindow(ctx, [
-    [W*0.660, fY - H*0.635],
-    [W*0.730, fY - H*0.635],
-    [W*0.80,  fY - H*0.66, W*0.855, fY - H*0.595, W*0.875, fY - H*0.525],
-    [W*0.808, fY - H*0.512],
-    [W*0.752, fY - H*0.635, W*0.686, fY - H*0.622, W*0.660, fY - H*0.635],
-  ], small);
-
-  drawWindow(ctx, [
-    [W*0.440, fY - H*0.635],
-    [W*0.655, fY - H*0.635],
-    [W*0.652, fY - H*0.412],
-    [W*0.438, fY - H*0.412],
-  ], small);
-
-  drawWindow(ctx, [
-    [W*0.155, fY - H*0.635],
-    [W*0.435, fY - H*0.635],
-    [W*0.433, fY - H*0.412],
-    [W*0.155, fY - H*0.412],
-    [W*0.105, fY - H*0.42, W*0.090, fY - H*0.465, W*0.085, fY - H*0.53],
-  ], small);
-
-  if (!small) {
-    drawHeadlight(ctx, W * 0.928, fY - H * 0.22, W * 0.018, H * 0.038, s.headlight);
-    ctx.save();
-    ctx.beginPath();
-    roundRect(ctx, W * 0.072, fY - H * 0.26, W * 0.022, H * 0.07, 3);
-    ctx.fillStyle = '#8b0000';
-    ctx.fill();
-    ctx.fillStyle = '#ff3333';
-    ctx.shadowColor = '#f00'; ctx.shadowBlur = 8;
-    roundRect(ctx, W * 0.075, fY - H * 0.255, W * 0.015, H * 0.055, 2);
-    ctx.fill();
-    ctx.restore();
-
-    // Roof rack
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(W * 0.2, fY - H * 0.668);
-    ctx.lineTo(W * 0.7, fY - H * 0.668);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    [W*0.28, W*0.42, W*0.57, W*0.68].forEach(x => {
-      ctx.beginPath();
-      ctx.moveTo(x, fY - H * 0.67);
-      ctx.lineTo(x, fY - H * 0.658);
-      ctx.stroke();
-    });
-    ctx.restore();
-  }
-
-  if (!small) drawSpoilerOnCar(ctx, W, H, 'suv', s.spoiler, s.color, fY);
-  if (!small) drawSticker(ctx, W, H, s.sticker, s.color);
-
-  drawWheel(ctx, rwX, wCY, wR, s.wheel);
-  drawWheel(ctx, fwX, wCY, wR, s.wheel);
-  drawFloorShadow(ctx, W, H, W * 0.5, W * 0.35, H * 0.028);
-}
-
-// ── CLASSIC ────────────────────────────────────
-
-function drawClassic(ctx, W, H, s, small) {
-  const fY  = H * 0.72;
-  const wR  = Math.max(10, H * 0.118);
-  const wCY = fY - wR;
-  const rwX = W * 0.265;
-  const fwX = W * 0.735;
-
-  const bTop = fY - H * 0.60;
-  const paint = createPaintGradient(ctx, s.color, W * 0.09, bTop, W * 0.82, H * 0.60);
-
-  ctx.save();
-  ctx.beginPath();
-  // rear bumper
-  ctx.moveTo(W * 0.092, fY);
-  ctx.bezierCurveTo(W * 0.078, fY, W * 0.070, fY - H * 0.05, W * 0.072, fY - H * 0.12);
-  // rear body (classic has a chrome bumper "step")
-  ctx.lineTo(W * 0.082, fY - H * 0.19);
-  ctx.lineTo(W * 0.115, fY - H * 0.255);
-  // rear fender (classic rounded fender flare)
-  ctx.bezierCurveTo(W * 0.135, fY - H * 0.28, W * 0.18, fY - H * 0.33, W * 0.21, fY - H * 0.38);
-  // waistline
-  ctx.lineTo(W * 0.23, fY - H * 0.395);
-  // rear pillar
-  ctx.bezierCurveTo(W * 0.245, fY - H * 0.41, W * 0.28, fY - H * 0.49, W * 0.30, fY - H * 0.545);
-  // roof
-  ctx.bezierCurveTo(W * 0.325, fY - H * 0.582, W * 0.390, fY - H * 0.598, W * 0.440, fY - H * 0.598);
-  ctx.bezierCurveTo(W * 0.535, fY - H * 0.598, W * 0.595, fY - H * 0.582, W * 0.625, fY - H * 0.555);
-  // A-pillar (vintage – very upright)
-  ctx.bezierCurveTo(W * 0.650, fY - H * 0.52, W * 0.668, fY - H * 0.47, W * 0.672, fY - H * 0.41);
-  // front fender rise
-  ctx.bezierCurveTo(W * 0.685, fY - H * 0.375, W * 0.735, fY - H * 0.35, W * 0.775, fY - H * 0.35);
-  // long front fender
-  ctx.bezierCurveTo(W * 0.82, fY - H * 0.35, W * 0.875, fY - H * 0.36, W * 0.905, fY - H * 0.30);
-  // front nose (rounded classic style)
-  ctx.bezierCurveTo(W * 0.930, fY - H * 0.28, W * 0.938, fY - H * 0.22, W * 0.938, fY - H * 0.16);
-  ctx.bezierCurveTo(W * 0.940, fY - H * 0.07, W * 0.928, fY, W * 0.910, fY);
-
-  // front arch
-  ctx.lineTo(fwX + wR * 1.18, fY);
-  archCut(ctx, fwX, wCY, wR * 1.18);
-  // rear arch
-  ctx.lineTo(rwX + wR * 1.18, fY);
-  archCut(ctx, rwX, wCY, wR * 1.18);
-  ctx.lineTo(W * 0.092, fY);
-  ctx.closePath();
-
-  ctx.fillStyle = paint;
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.30)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-
-  // Roof shade
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(W * 0.30, fY - H * 0.545);
-  ctx.bezierCurveTo(W * 0.325, fY - H * 0.582, W * 0.390, fY - H * 0.598, W * 0.440, fY - H * 0.598);
-  ctx.bezierCurveTo(W * 0.535, fY - H * 0.598, W * 0.595, fY - H * 0.582, W * 0.625, fY - H * 0.555);
-  ctx.bezierCurveTo(W * 0.600, fY - H * 0.540, W * 0.430, fY - H * 0.535, W * 0.30, fY - H * 0.545);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0,0,0,0.14)';
-  ctx.fill();
-  ctx.restore();
-
-  // Windows
-  drawWindow(ctx, [
-    [W*0.625, fY - H*0.555],
-    [W*0.668, fY - H*0.47, W*0.672, fY - H*0.41, W*0.670, fY - H*0.40],
-    [W*0.622, fY - H*0.41],
-    [W*0.608, fY - H*0.44, W*0.620, fY - H*0.52, W*0.625, fY - H*0.555],
-  ], small);
-
-  drawWindow(ctx, [
-    [W*0.300, fY - H*0.545],
-    [W*0.620, fY - H*0.555],
-    [W*0.620, fY - H*0.410],
-    [W*0.300, fY - H*0.420],
-    [W*0.282, fY - H*0.42, W*0.270, fY - H*0.44, W*0.278, fY - H*0.50],
-  ], small);
-
-  // Chrome bumper strips
-  if (!small) {
-    ctx.save();
-    const chromePaint = ctx.createLinearGradient(W*0.09, 0, W*0.91, 0);
-    chromePaint.addColorStop(0, '#888'); chromePaint.addColorStop(0.5, '#e8e8e8'); chromePaint.addColorStop(1, '#888');
-    // Rear bumper
-    ctx.fillStyle = chromePaint;
-    roundRect(ctx, W*0.073, fY - H*0.085, W*0.06, H*0.026, 4);
-    ctx.fill();
-    // Front bumper
-    roundRect(ctx, W*0.878, fY - H*0.085, W*0.06, H*0.026, 4);
-    ctx.fill();
-    ctx.restore();
-
-    // Round headlight (classic round headlights)
-    drawHeadlight(ctx, W * 0.914, fY - H * 0.215, W * 0.022, H * 0.038, s.headlight);
-    // Tail light
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(W * 0.094, fY - H * 0.215, W * 0.020, H * 0.036, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#8b0000';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(W * 0.094, fY - H * 0.215, W * 0.010, H * 0.018, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#ff4444';
-    ctx.shadowColor = '#f00'; ctx.shadowBlur = 8;
-    ctx.fill();
-    ctx.restore();
-
-    // Chrome side trim line
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(W * 0.115, fY - H * 0.255);
-    ctx.bezierCurveTo(W * 0.35, fY - H * 0.275, W * 0.68, fY - H * 0.275, W * 0.905, fY - H * 0.30);
-    ctx.strokeStyle = '#c8c8c8';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  if (!small) drawSpoilerOnCar(ctx, W, H, 'classic', s.spoiler, s.color, fY);
-  if (!small) drawSticker(ctx, W, H, s.sticker, s.color);
-
-  drawWheel(ctx, rwX, wCY, wR, s.wheel);
-  drawWheel(ctx, fwX, wCY, wR, s.wheel);
-  drawFloorShadow(ctx, W, H, W * 0.5, W * 0.33, H * 0.025);
-}
-
-// ── Stickers ───────────────────────────────────
-
-function drawSticker(ctx, W, H, sticker, color) {
-  if (sticker === 'none') return;
-  ctx.save();
-  const fY = H * 0.72;
-  const bx = W * 0.09, by = fY - H * 0.56, bw = W * 0.82, bh = H * 0.36;
-
-  if (sticker === 'flames') {
-    for (let i = 0; i < 6; i++) {
-      const fx = bx + bw * 0.04 + i * bw * 0.075;
-      ctx.beginPath();
-      ctx.moveTo(fx, by + bh);
-      ctx.bezierCurveTo(fx - 8, by + bh * 0.6, fx + 4, by + bh * 0.35, fx + 2, by + bh * 0.05);
-      ctx.bezierCurveTo(fx + 12, by + bh * 0.35, fx + 18, by + bh * 0.6, fx + 14, by + bh);
-      ctx.closePath();
-      const fg = ctx.createLinearGradient(fx, by, fx, by + bh);
-      fg.addColorStop(0, '#fff200');
-      fg.addColorStop(0.4, '#ff6600');
-      fg.addColorStop(1, '#ff0000');
-      ctx.fillStyle = fg;
-      ctx.globalAlpha = 0.80;
-      ctx.fill();
-    }
-  } else if (sticker === 'stars') {
-    [[0.2,0.55],[0.38,0.40],[0.6,0.52],[0.78,0.44],[0.5,0.70]].forEach(([rx, ry]) => {
-      drawStar(ctx, bx + bw * rx, by + bh * ry, 13, 5, '#ffd700');
-    });
-  } else if (sticker === 'stripes') {
-    ctx.globalAlpha = 0.50;
-    const sc = (color === 'rainbow' || color === 'lava') ? '#fff' : shiftHue(color);
-    ctx.fillStyle = sc;
-    [[0.26, 0.06], [0.38, 0.06]].forEach(([rx, rw]) => {
-      roundRect(ctx, bx + bw * rx, by + bh * 0.30, bw * rw, bh * 0.60, 4);
-      ctx.fill();
-    });
-  } else if (sticker === 'lightning') {
-    const lx = bx + bw * 0.42, ly = by + bh * 0.25;
-    ctx.beginPath();
-    ctx.moveTo(lx + 22, ly);
-    ctx.lineTo(lx, ly + bh * 0.37);
-    ctx.lineTo(lx + 15, ly + bh * 0.37);
-    ctx.lineTo(lx - 4, ly + bh * 0.72);
-    ctx.lineTo(lx + 30, ly + bh * 0.37);
-    ctx.lineTo(lx + 15, ly + bh * 0.37);
-    ctx.closePath();
-    ctx.fillStyle = '#ffd700';
-    ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 14;
-    ctx.globalAlpha = 0.88;
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-function drawStar(ctx, cx, cy, r, pts, color) {
-  ctx.save();
-  ctx.beginPath();
-  for (let i = 0; i < pts * 2; i++) {
-    const angle  = (i * Math.PI) / pts - Math.PI / 2;
-    const radius = i % 2 === 0 ? r : r * 0.4;
-    ctx.lineTo(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius);
-  }
-  ctx.closePath();
-  ctx.fillStyle = color;
-  ctx.shadowColor = color; ctx.shadowBlur = 8;
-  ctx.fill();
-  ctx.restore();
-}
-
-function shiftHue(hex) {
-  try {
-    const [r,g,b] = hexToRgb(hex);
-    return `rgb(${Math.min(255,r+90)},${Math.min(255,g+90)},${Math.min(255,b+90)})`;
-  } catch { return '#ffffff'; }
-}
-
-// ── Spoiler ────────────────────────────────────
-
-function drawSpoilerOnCar(ctx, W, H, shape, spoiler, color, fY) {
-  if (spoiler === 'none') return;
-  fY = fY || H * 0.72;
-
-  const spoilerHeights = { small: H * 0.07, big: H * 0.13, wing: H * 0.16 };
-  const sh = spoilerHeights[spoiler] || 0;
-
-  // Rear of each car shape
-  const rearX = { sedan: W*0.13, supercar: W*0.09, suv: W*0.09, classic: W*0.13 }[shape] || W*0.13;
-  const attachY = { sedan: fY - H*0.28, supercar: fY - H*0.22, suv: fY - H*0.40, classic: fY - H*0.28 }[shape] || fY - H*0.28;
-
-  ctx.save();
-  if (spoiler === 'wing') {
-    // Horizontal blade
-    const bladeY = attachY - sh;
-    ctx.fillStyle = '#777';
-    roundRect(ctx, rearX - W*0.02, bladeY, W*0.10, sh * 0.16, 3);
-    ctx.fill();
-    // Support stanchion
-    ctx.fillStyle = '#555';
-    roundRect(ctx, rearX + W*0.01, bladeY, W*0.025, sh, 3);
-    ctx.fill();
-  } else {
-    const [r,g,b] = hexToRgb(color === 'rainbow' ? '#888' : color === 'lava' ? '#cc4400' : color);
-    const sp = createPaintGradient(ctx, color, rearX, attachY - sh, W*0.06, sh);
-    roundRect(ctx, rearX, attachY - sh, W*0.045, sh, 4);
-    ctx.fillStyle = sp;
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-// ── roundRect helper ───────────────────────────
-
-function roundRect(ctx, x, y, w, h, r) {
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// ── Save / Collection ──────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+//  SAVE / COLLECTION
+// ═════════════════════════════════════════════════════════════════════════════
 
 function openSaveDialog() {
   document.getElementById('save-dialog').classList.remove('hidden');
@@ -1233,119 +1390,89 @@ function closeSaveDialog() {
 }
 
 function saveCarToCollection() {
-  const name = document.getElementById('car-name-input').value.trim() || 'My Car';
-  const cv   = document.getElementById('car-canvas');
-  savedCars.push({ name, snapshot: cv.toDataURL(), config: { ...state } });
-  localStorage.setItem('charlies-cars', JSON.stringify(savedCars));
+  const name     = document.getElementById('car-name-input').value.trim() || 'My Car';
+  const snapshot = renderer ? renderer.domElement.toDataURL('image/jpeg', 0.75) : '';
+  savedCars.push({ name, snapshot, config: { ...state } });
+  localStorage.setItem('charlies-cars-3d', JSON.stringify(savedCars));
   closeSaveDialog();
-  showToast(`💾 "${name}" saved!`);
+  showToast(`💾 "${name}" saved to collection!`);
+  // Update collection badge if visible
+  const btn = document.querySelector('.bar-btn');
+  if (btn && btn.textContent.startsWith('🏁')) {
+    btn.textContent = `🏁 Collection (${savedCars.length})`;
+  }
 }
 
 function renderCollection() {
   const grid = document.getElementById('collection-grid');
   grid.innerHTML = '';
   if (savedCars.length === 0) {
-    grid.innerHTML = '<p style="color:#aaa;text-align:center;grid-column:1/-1;">No saved cars yet. Go design one! 🚗</p>';
+    grid.innerHTML = '<p style="color:#aaa;text-align:center;grid-column:1/-1;padding:40px 0">No saved cars yet — go design one! 🚗</p>';
     return;
   }
   savedCars.forEach((car, i) => {
     const card = document.createElement('div');
     card.className = 'coll-card';
-    const img = document.createElement('img');
-    img.src    = car.snapshot;
-    img.width  = 200; img.height = 120;
-    img.style.borderRadius = '8px';
-    card.appendChild(img);
+
+    if (car.snapshot) {
+      const img = document.createElement('img');
+      img.src   = car.snapshot;
+      img.style.cssText = 'width:100%;border-radius:8px;margin-bottom:10px;display:block';
+      card.appendChild(img);
+    }
+
     card.innerHTML += `<div class="coll-name">🚗 ${car.name}</div>`;
-    card.appendChild(img);
-    const del = document.createElement('button');
-    del.className = 'opt-btn'; del.style.marginTop = '8px'; del.style.color = '#f88';
-    del.textContent = '🗑 Delete';
-    del.onclick = e => { e.stopPropagation(); savedCars.splice(i, 1); localStorage.setItem('charlies-cars', JSON.stringify(savedCars)); renderCollection(); };
-    card.appendChild(del);
-    const load = document.createElement('button');
-    load.className = 'opt-btn'; load.style.marginTop = '4px';
-    load.textContent = '✏ Edit';
-    load.onclick = e => { e.stopPropagation(); Object.assign(state, car.config); showScreen('screen-garage'); initGarage(); renderGarage(); };
-    card.appendChild(load);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'opt-btn'; editBtn.style.marginTop = '6px';
+    editBtn.textContent = '✏ Edit';
+    editBtn.onclick = () => {
+      Object.assign(state, car.config);
+      document.getElementById('garage-title').textContent =
+        CARS.find(c => c.shape === state.carShape)?.label + ' – Garage' || 'Garage';
+      showScreen('screen-garage');
+      initGaragePanel();
+    };
+    card.appendChild(editBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'opt-btn'; delBtn.style.marginTop = '4px'; delBtn.style.color = '#f88';
+    delBtn.textContent = '🗑 Delete';
+    delBtn.onclick = () => {
+      savedCars.splice(i, 1);
+      localStorage.setItem('charlies-cars-3d', JSON.stringify(savedCars));
+      renderCollection();
+    };
+    card.appendChild(delBtn);
+
     grid.appendChild(card);
   });
 }
 
-function goToPicker() { showScreen('screen-pick'); }
-
-// ── Photo Mode ─────────────────────────────────
-
-function enterPhotoMode() {
-  document.getElementById('photo-overlay').classList.remove('hidden');
-  renderPhotoMode();
-}
-
-function exitPhoto() {
-  document.getElementById('photo-overlay').classList.add('hidden');
-}
-
-function cycleBackground() {
-  state.bgIndex = (state.bgIndex + 1) % BG_SCENES.length;
-  renderPhotoMode();
-}
-
-function renderPhotoMode() {
-  const scene = BG_SCENES[state.bgIndex];
-  const bg    = document.getElementById('photo-bg');
-  bg.style.background = `linear-gradient(to bottom, ${scene.gradient[0]}, ${scene.gradient[1]})`;
-
-  const cv  = document.getElementById('photo-canvas');
-  const ctx = cv.getContext('2d');
-  ctx.clearRect(0, 0, cv.width, cv.height);
-
-  // Ground
-  ctx.fillStyle = scene.groundColor;
-  ctx.fillRect(0, cv.height * 0.75, cv.width, cv.height * 0.25);
-
-  if (scene.groundStripe) {
-    ctx.fillStyle = '#fff';
-    for (let x = 0; x < cv.width; x += 60) ctx.fillRect(x, cv.height * 0.86, 36, 5);
-  }
-
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.font = 'bold 13px Arial';
-  ctx.fillText(scene.label, 10, 20);
-
-  drawCar(ctx, cv.width, cv.height, state, false);
-}
-
-function savePhoto() {
-  const photoCv = document.getElementById('photo-canvas');
-  const scene   = BG_SCENES[state.bgIndex];
-  const out = document.createElement('canvas');
-  out.width = photoCv.width; out.height = photoCv.height;
-  const oc  = out.getContext('2d');
-  const grd = oc.createLinearGradient(0, 0, 0, out.height);
-  grd.addColorStop(0, scene.gradient[0]);
-  grd.addColorStop(1, scene.gradient[1]);
-  oc.fillStyle = grd;
-  oc.fillRect(0, 0, out.width, out.height);
-  oc.drawImage(photoCv, 0, 0);
-  const link = document.createElement('a');
-  link.download = 'charlies-car-photo.png';
-  link.href = out.toDataURL();
+function takeScreenshot() {
+  if (!renderer) return;
+  renderer.render(scene, camera);
+  const link    = document.createElement('a');
+  link.download = 'charlies-car.png';
+  link.href     = renderer.domElement.toDataURL();
   link.click();
-  showToast('📸 Photo saved!');
+  showToast('📸 Screenshot saved!');
 }
 
-function viewCollection() { showScreen('screen-collection'); }
-
-// ── Boot ───────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+//  BOOT
+// ═════════════════════════════════════════════════════════════════════════════
 
 function boot() {
   initPicker();
   showScreen('screen-pick');
-  const garage = document.getElementById('screen-garage');
-  const nav    = document.createElement('div');
-  nav.style.cssText = 'text-align:right;margin-bottom:8px;';
-  nav.innerHTML = `<button class="opt-btn" onclick="viewCollection()">🏁 My Collection (${savedCars.length})</button>`;
-  garage.insertBefore(nav, garage.firstChild);
+
+  // Make functions available to inline HTML onclick handlers
+  Object.assign(window, {
+    showScreen, goToPicker, viewCollection,
+    setCustomColor, openSaveDialog, closeSaveDialog,
+    saveCarToCollection, takeScreenshot, extractColorFromPhoto,
+  });
 }
 
 boot();

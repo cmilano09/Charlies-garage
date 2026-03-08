@@ -15,15 +15,15 @@ body {
 
 h1 {
   text-align: center;
-  font-size: 2.8rem;
+  font-size: 2.6rem;
   text-shadow: 0 0 20px #f90, 0 0 40px #f90;
   margin-bottom: 8px;
   animation: glow 2s ease-in-out infinite alternate;
 }
 h2 { text-align: center; font-size: 2rem; margin-bottom: 16px; color: #ffd700; }
-h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
+h3 { font-size: 0.95rem; margin-bottom: 8px; color: #adf; }
 
-.subtitle { text-align: center; font-size: 1.2rem; color: #adf; margin-bottom: 24px; }
+.subtitle { text-align: center; font-size: 1.1rem; color: #adf; margin-bottom: 24px; }
 
 @keyframes glow {
   from { text-shadow: 0 0 10px #f90, 0 0 20px #f90; }
@@ -57,89 +57,198 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
   display: block;
   margin: 0 auto 12px;
   border-radius: 10px;
-  background: #e8e8e8;
+  background: #e0e0e0;
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
 }
 .car-card .car-label { font-size: 1.1rem; font-weight: bold; color: #ffd700; }
 .car-card .car-desc  { font-size: 0.85rem; color: #aaa; margin-top: 4px; }
 
+/* ── Garage top bar ── */
+.garage-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1100px;
+  margin: 0 auto 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.garage-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #ffd700;
+}
+.garage-bar-btns { display: flex; gap: 8px; }
+.bar-btn {
+  padding: 8px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.bar-btn:hover { background: rgba(255,255,255,0.18); border-color: #ffd700; }
+
 /* ── Garage Layout ── */
 .garage-layout {
   display: flex;
-  gap: 24px;
-  max-width: 1000px;
+  gap: 20px;
+  max-width: 1100px;
   margin: 0 auto;
   flex-wrap: wrap;
-  justify-content: center;
+  align-items: flex-start;
 }
 
-.preview-area {
+/* ── 3-D Viewport ── */
+.viewport-wrap {
   position: relative;
-  flex: 0 0 auto;
-}
-
-#car-canvas {
-  background: #e8e8e8;
+  flex: 1 1 500px;
+  min-width: 300px;
+  height: 480px;
   border-radius: 16px;
-  border: 2px solid rgba(255,255,255,0.18);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1);
-  display: block;
+  overflow: hidden;
+  border: 2px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  background: #111;
 }
 
-/* ── Panel ── */
+@media (max-width: 600px) {
+  .viewport-wrap { height: 310px; }
+}
+
+#three-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  touch-action: none;
+}
+
+.viewport-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.7);
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── Customiser Panel ── */
 .panel {
-  flex: 1 1 280px;
+  flex: 0 1 300px;
   min-width: 260px;
-  max-width: 340px;
+  max-width: 320px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
 }
+.panel::-webkit-scrollbar { width: 4px; }
+.panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
 
 .panel-section {
   background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.10);
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
 }
 
 /* ── Color Swatches ── */
 .color-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   margin-bottom: 8px;
 }
 
 .swatch {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   cursor: pointer;
   border: 3px solid transparent;
   transition: transform .15s, border-color .15s;
 }
-.swatch:hover, .swatch.active { transform: scale(1.25); border-color: #fff; }
+.swatch:hover, .swatch.active {
+  transform: scale(1.28);
+  border-color: #fff;
+}
+
+.custom-color-label { font-size: 0.82rem; color: #adf; }
+input[type="color"] {
+  width: 36px; height: 24px;
+  border: none; border-radius: 4px;
+  cursor: pointer; vertical-align: middle; margin-left: 6px;
+}
 
 /* ── Button Rows ── */
 .btn-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .opt-btn {
-  padding: 6px 12px;
-  border-radius: 20px;
-  border: 2px solid rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.08);
+  padding: 5px 10px;
+  border-radius: 18px;
+  border: 2px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.07);
   color: #fff;
-  font-size: 0.85rem;
+  font-size: 0.80rem;
   cursor: pointer;
   transition: background .15s, border-color .15s, transform .1s;
 }
-.opt-btn:hover { background: rgba(255,255,255,0.18); border-color: #ffd700; }
+.opt-btn:hover  { background: rgba(255,255,255,0.16); border-color: #ffd700; }
 .opt-btn.active { background: #ffd700; color: #000; border-color: #ffd700; font-weight: bold; }
+
+/* ── Photo section ── */
+.photo-section .hint-text { font-size: 0.78rem; color: #aaa; margin-bottom: 8px; line-height: 1.4; }
+
+.upload-btn {
+  display: inline-block;
+  padding: 7px 16px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #f093fb, #f5576c);
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.upload-btn:hover { opacity: 0.85; }
+
+#photo-result {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#photo-result.hidden { display: none; }
+#photo-thumb {
+  width: 60px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+#extracted-swatch {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  flex-shrink: 0;
+}
+#extracted-name { font-size: 0.72rem; color: #adf; }
 
 /* ── Action Row ── */
 .action-row {
@@ -152,10 +261,10 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 
 .big-btn {
   flex: 1 1 auto;
-  padding: 12px 16px;
+  padding: 11px 14px;
   border-radius: 12px;
   border: none;
-  font-size: 0.95rem;
+  font-size: 0.90rem;
   font-weight: bold;
   cursor: pointer;
   transition: transform .15s, box-shadow .15s;
@@ -163,7 +272,7 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 .big-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px #0006; }
 .save-btn  { background: linear-gradient(135deg, #00b09b, #96c93d); color: #000; }
 .photo-btn { background: linear-gradient(135deg, #f093fb, #f5576c); color: #fff; }
-.back-btn  { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+.back-btn  { background: rgba(255,255,255,0.10); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
 
 /* ── Collection ── */
 .collection-grid {
@@ -176,66 +285,20 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 
 .coll-card {
   background: rgba(255,255,255,0.07);
-  border: 2px solid rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.13);
   border-radius: 14px;
-  padding: 16px;
+  padding: 14px;
   text-align: center;
-  cursor: pointer;
   transition: transform .2s, border-color .2s;
 }
-.coll-card:hover { transform: scale(1.04); border-color: #ffd700; }
-.coll-card canvas { display: block; margin: 0 auto 10px; }
-.coll-card .coll-name { font-size: 1rem; font-weight: bold; color: #ffd700; }
-
-/* ── Photo Mode Overlay ── */
-.photo-overlay { display: none; }
-#photo-overlay {
-  position: absolute;
-  top: 0; left: 0;
-  width: 500px;
-  height: 300px;
-  border-radius: 16px;
-  overflow: hidden;
-}
-#photo-overlay:not(.hidden) { display: block; }
-
-#photo-bg {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-}
-#photo-canvas {
-  position: absolute;
-  inset: 0;
-}
-.photo-controls {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  gap: 8px;
-}
-.photo-controls button {
-  padding: 8px 14px;
-  border-radius: 20px;
-  border: none;
-  font-weight: bold;
-  cursor: pointer;
-  background: rgba(0,0,0,0.7);
-  color: #fff;
-  font-size: 0.85rem;
-  backdrop-filter: blur(4px);
-  transition: background .15s;
-}
-.photo-controls button:hover { background: rgba(255,215,0,0.8); color: #000; }
+.coll-card:hover { transform: scale(1.03); border-color: #ffd700; }
+.coll-name { font-size: 1rem; font-weight: bold; color: #ffd700; margin-bottom: 8px; }
 
 /* ── Save Dialog ── */
 .dialog {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.72);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -250,7 +313,7 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
   min-width: 300px;
   text-align: center;
 }
-.dialog-box h3 { font-size: 1.4rem; color: #ffd700; margin-bottom: 16px; }
+.dialog-box h3 { font-size: 1.3rem; color: #ffd700; margin-bottom: 16px; }
 .dialog-box input {
   width: 100%;
   padding: 10px 14px;
@@ -261,7 +324,7 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
   font-size: 1rem;
   margin-bottom: 16px;
 }
-.dialog-box input::placeholder { color: #888; }
+.dialog-box input::placeholder { color: #777; }
 
 /* ── Toast ── */
 .toast {
@@ -274,24 +337,13 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
   font-weight: bold;
   padding: 12px 24px;
   border-radius: 30px;
-  font-size: 1.1rem;
+  font-size: 1rem;
   box-shadow: 0 4px 20px #0006;
   z-index: 200;
-  opacity: 1;
   transition: opacity .5s;
 }
 .toast.hidden { display: none; }
 
 /* ── Helpers ── */
 .hidden { display: none !important; }
-
-label { font-size: 0.85rem; color: #adf; }
-input[type="color"] { width: 40px; height: 26px; border: none; border-radius: 4px; cursor: pointer; vertical-align: middle; margin-left: 6px; }
-
-/* ── Responsive ── */
-@media (max-width: 600px) {
-  h1 { font-size: 1.8rem; }
-  #car-canvas { width: 320px; height: 192px; }
-  #photo-overlay { width: 320px; height: 192px; }
-  #photo-canvas { width: 320px; height: 192px; }
-}
+label  { font-size: 0.82rem; color: #adf; }

@@ -2,56 +2,63 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Charlie's Car Designer 🚗</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Charlie's Car Designer 3D</title>
   <link rel="stylesheet" href="style.css" />
+
+  <!-- Three.js via CDN import map -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three":           "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/":   "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
 
-  <!-- SCREEN 1: Car Picker -->
+  <!-- ── SCREEN 1: Car Picker ── -->
   <div id="screen-pick" class="screen active">
-    <h1>🚗 Charlie's Car Designer</h1>
-    <p class="subtitle">Pick your starting car!</p>
+    <h1>Charlie's Car Designer</h1>
+    <p class="subtitle">Pick your car to customise</p>
     <div class="car-grid" id="car-grid"></div>
   </div>
 
-  <!-- SCREEN 2: Garage / Customizer -->
+  <!-- ── SCREEN 2: 3D Garage ── -->
   <div id="screen-garage" class="screen">
-    <h2>🔧 Charlie's Garage</h2>
+
+    <div class="garage-bar">
+      <span class="garage-title" id="garage-title">Charlie's Garage</span>
+      <div class="garage-bar-btns">
+        <button class="bar-btn" onclick="viewCollection()">🏁 Collection</button>
+        <button class="bar-btn" onclick="goToPicker()">← Back</button>
+      </div>
+    </div>
 
     <div class="garage-layout">
 
-      <!-- Car Preview Canvas -->
-      <div class="preview-area">
-        <canvas id="car-canvas" width="500" height="300"></canvas>
-        <div id="photo-overlay" class="hidden">
-          <div id="photo-bg"></div>
-          <canvas id="photo-canvas" width="500" height="300"></canvas>
-          <div class="photo-controls">
-            <button onclick="cycleBackground()">🌄 Change Scene</button>
-            <button onclick="savePhoto()">📸 Take Photo!</button>
-            <button onclick="exitPhoto()">✖ Close</button>
-          </div>
-        </div>
+      <!-- 3-D viewport -->
+      <div class="viewport-wrap" id="viewport-wrap">
+        <canvas id="three-canvas"></canvas>
+        <div class="viewport-hint">Drag to rotate · Pinch to zoom</div>
       </div>
 
-      <!-- Customizer Panel -->
-      <div class="panel">
+      <!-- Customiser panel -->
+      <div class="panel" id="side-panel">
 
         <div class="panel-section">
-          <h3>🎨 Paint Color</h3>
+          <h3>🎨 Paint</h3>
           <div class="color-row" id="color-swatches"></div>
-          <label>Custom color: <input type="color" id="custom-color" value="#ff0000" oninput="setCustomColor(this.value)" /></label>
+          <label class="custom-color-label">
+            Custom:&nbsp;<input type="color" id="custom-color" value="#c0392b"
+              oninput="setCustomColor(this.value)" />
+          </label>
         </div>
 
         <div class="panel-section">
           <h3>🛞 Wheels</h3>
           <div class="btn-row" id="wheel-btns"></div>
-        </div>
-
-        <div class="panel-section">
-          <h3>✨ Stickers &amp; Stripes</h3>
-          <div class="btn-row" id="sticker-btns"></div>
         </div>
 
         <div class="panel-section">
@@ -64,40 +71,54 @@
           <div class="btn-row" id="spoiler-btns"></div>
         </div>
 
+        <div class="panel-section photo-section">
+          <h3>📷 Match a Real Car</h3>
+          <p class="hint-text">Upload a photo — we'll grab the car's colour and apply it!</p>
+          <label class="upload-btn">
+            Upload Photo
+            <input type="file" id="photo-input" accept="image/*" style="display:none"
+              onchange="extractColorFromPhoto(this)" />
+          </label>
+          <div id="photo-result" class="hidden">
+            <img id="photo-thumb" />
+            <div id="extracted-swatch"></div>
+            <span id="extracted-name"></span>
+          </div>
+        </div>
+
         <div class="action-row">
-          <button class="big-btn save-btn" onclick="openSaveDialog()">💾 Save My Car</button>
-          <button class="big-btn photo-btn" onclick="enterPhotoMode()">📸 Photo Mode</button>
-          <button class="big-btn back-btn" onclick="goToPicker()">🔙 Pick Another</button>
+          <button class="big-btn save-btn"  onclick="openSaveDialog()">💾 Save Car</button>
+          <button class="big-btn photo-btn" onclick="takeScreenshot()">📸 Photo</button>
         </div>
 
       </div>
     </div>
   </div>
 
-  <!-- SCREEN 3: Collection -->
+  <!-- ── SCREEN 3: Collection ── -->
   <div id="screen-collection" class="screen">
-    <h2>🏁 My Car Collection</h2>
+    <h2>🏁 My Collection</h2>
     <div class="collection-grid" id="collection-grid"></div>
-    <div class="action-row center">
+    <div class="action-row center" style="margin-top:20px">
       <button class="big-btn back-btn" onclick="showScreen('screen-pick')">➕ Design Another</button>
     </div>
   </div>
 
-  <!-- Save Dialog -->
+  <!-- Save dialog -->
   <div id="save-dialog" class="dialog hidden">
     <div class="dialog-box">
       <h3>Name your car!</h3>
       <input type="text" id="car-name-input" placeholder="e.g. Lightning Car ⚡" maxlength="30" />
       <div class="action-row">
-        <button class="big-btn save-btn" onclick="saveCarToCollection()">💾 Save!</button>
-        <button class="big-btn back-btn" onclick="closeSaveDialog()">Cancel</button>
+        <button class="big-btn save-btn"  onclick="saveCarToCollection()">💾 Save!</button>
+        <button class="big-btn back-btn"  onclick="closeSaveDialog()">Cancel</button>
       </div>
     </div>
   </div>
 
-  <!-- Photo Toast -->
-  <div id="toast" class="toast hidden">📸 Photo saved!</div>
+  <!-- Toast -->
+  <div id="toast" class="toast hidden">Saved!</div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
