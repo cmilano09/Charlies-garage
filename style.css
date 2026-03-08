@@ -3,7 +3,7 @@
 
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
   min-height: 100vh;
   color: #fff;
   overflow-x: hidden;
@@ -40,10 +40,10 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 }
 
 .car-card {
-  background: rgba(255,255,255,0.07);
-  border: 2px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.12);
   border-radius: 16px;
-  padding: 20px 16px;
+  padding: 16px 16px 20px;
   text-align: center;
   cursor: pointer;
   transition: transform .2s, border-color .2s, box-shadow .2s;
@@ -51,9 +51,15 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 .car-card:hover {
   transform: translateY(-6px) scale(1.03);
   border-color: #ffd700;
-  box-shadow: 0 0 24px #ffd70088;
+  box-shadow: 0 0 28px rgba(255,215,0,0.45), 0 12px 30px rgba(0,0,0,0.5);
 }
-.car-card canvas { display: block; margin: 0 auto 12px; }
+.car-card canvas {
+  display: block;
+  margin: 0 auto 12px;
+  border-radius: 10px;
+  background: #e8e8e8;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
 .car-card .car-label { font-size: 1.1rem; font-weight: bold; color: #ffd700; }
 .car-card .car-desc  { font-size: 0.85rem; color: #aaa; margin-top: 4px; }
 
@@ -73,10 +79,10 @@ h3 { font-size: 1rem; margin-bottom: 8px; color: #adf; }
 }
 
 #car-canvas {
-  background: radial-gradient(ellipse at center, #1e3a5f 0%, #0a0a1a 100%);
+  background: #e8e8e8;
   border-radius: 16px;
-  border: 2px solid #ffd70066;
-  box-shadow: 0 0 30px #00000088;
+  border: 2px solid rgba(255,255,255,0.18);
+  box-shadow: 0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.1);
   display: block;
 }
 
