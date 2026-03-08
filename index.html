@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Charlie's Car Designer 🚗</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SCREEN 1: Car Picker -->
+  <div id="screen-pick" class="screen active">
+    <h1>🚗 Charlie's Car Designer</h1>
+    <p class="subtitle">Pick your starting car!</p>
+    <div class="car-grid" id="car-grid"></div>
+  </div>
+
+  <!-- SCREEN 2: Garage / Customizer -->
+  <div id="screen-garage" class="screen">
+    <h2>🔧 Charlie's Garage</h2>
+
+    <div class="garage-layout">
+
+      <!-- Car Preview Canvas -->
+      <div class="preview-area">
+        <canvas id="car-canvas" width="500" height="300"></canvas>
+        <div id="photo-overlay" class="hidden">
+          <div id="photo-bg"></div>
+          <canvas id="photo-canvas" width="500" height="300"></canvas>
+          <div class="photo-controls">
+            <button onclick="cycleBackground()">🌄 Change Scene</button>
+            <button onclick="savePhoto()">📸 Take Photo!</button>
+            <button onclick="exitPhoto()">✖ Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Customizer Panel -->
+      <div class="panel">
+
+        <div class="panel-section">
+          <h3>🎨 Paint Color</h3>
+          <div class="color-row" id="color-swatches"></div>
+          <label>Custom color: <input type="color" id="custom-color" value="#ff0000" oninput="setCustomColor(this.value)" /></label>
+        </div>
+
+        <div class="panel-section">
+          <h3>🛞 Wheels</h3>
+          <div class="btn-row" id="wheel-btns"></div>
+        </div>
+
+        <div class="panel-section">
+          <h3>✨ Stickers &amp; Stripes</h3>
+          <div class="btn-row" id="sticker-btns"></div>
+        </div>
+
+        <div class="panel-section">
+          <h3>💡 Headlights</h3>
+          <div class="btn-row" id="headlight-btns"></div>
+        </div>
+
+        <div class="panel-section">
+          <h3>🏎 Spoiler</h3>
+          <div class="btn-row" id="spoiler-btns"></div>
+        </div>
+
+        <div class="action-row">
+          <button class="big-btn save-btn" onclick="openSaveDialog()">💾 Save My Car</button>
+          <button class="big-btn photo-btn" onclick="enterPhotoMode()">📸 Photo Mode</button>
+          <button class="big-btn back-btn" onclick="goToPicker()">🔙 Pick Another</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: Collection -->
+  <div id="screen-collection" class="screen">
+    <h2>🏁 My Car Collection</h2>
+    <div class="collection-grid" id="collection-grid"></div>
+    <div class="action-row center">
+      <button class="big-btn back-btn" onclick="showScreen('screen-pick')">➕ Design Another</button>
+    </div>
+  </div>
+
+  <!-- Save Dialog -->
+  <div id="save-dialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h3>Name your car!</h3>
+      <input type="text" id="car-name-input" placeholder="e.g. Lightning Car ⚡" maxlength="30" />
+      <div class="action-row">
+        <button class="big-btn save-btn" onclick="saveCarToCollection()">💾 Save!</button>
+        <button class="big-btn back-btn" onclick="closeSaveDialog()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photo Toast -->
+  <div id="toast" class="toast hidden">📸 Photo saved!</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
