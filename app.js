@@ -17,16 +17,19 @@ const URL_FERRARI_AO = 'https://raw.githubusercontent.com/mrdoob/three.js/master
 const URL_SEDAN      = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/sedan.glb';
 const URL_SUV        = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/suv.glb';
 const URL_RACE       = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/race.glb';
+// Lamborghini – publicly hosted GLB, open CORS (~7 MB)
+const URL_LAMBO      = 'https://raw.githubusercontent.com/ashdelta1023/Gltf/main/Lamborghini.glb';
 // Draco decoder (needed to decompress the ferrari.glb)
 const DRACO_PATH     = 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/libs/draco/gltf/';
 
 // ── Data ──────────────────────────────────────────────────────────────────
 
 const CARS = [
-  { id: 'ferrari', label: 'Ferrari 458',  desc: 'Iconic Italian supercar',  shape: 'ferrari' },
-  { id: 'sedan',   label: 'Sport Sedan',  desc: 'Sleek 4-door cruiser',      shape: 'sedan'   },
-  { id: 'suv',     label: 'Premium SUV',  desc: 'Powerful & spacious',       shape: 'suv'     },
-  { id: 'race',    label: 'Race Car',     desc: 'Built for the track',       shape: 'race'    },
+  { id: 'ferrari',     label: 'Ferrari 458',    desc: 'Iconic Italian supercar',  shape: 'ferrari'     },
+  { id: 'lamborghini', label: 'Lamborghini',     desc: "Charlie's dream machine",  shape: 'lamborghini' },
+  { id: 'sedan',       label: 'Sport Sedan',     desc: 'Sleek 4-door cruiser',     shape: 'sedan'       },
+  { id: 'suv',         label: 'Premium SUV',     desc: 'Powerful & spacious',      shape: 'suv'         },
+  { id: 'race',        label: 'Race Car',        desc: 'Built for the track',      shape: 'race'        },
 ];
 
 const COLORS = [
@@ -86,6 +89,7 @@ let gltfLoader = null;
 
 // Cached model scenes (avoid re-downloading on every rebuild)
 let ferrariCache = null;
+let lamboCache   = null;
 let sedanCache   = null;
 let suvCache     = null;
 let raceCache    = null;
@@ -526,6 +530,34 @@ async function buildFerrari(grp, s) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  LAMBORGHINI – publicly hosted GLB
+// ══════════════════════════════════════════════════════════════════════════
+
+async function buildLambo(grp, s) {
+  setLoadingMessage('Loading Lamborghini… 🐂');
+  try {
+    if (!lamboCache) {
+      const gltf = await gltfLoader.loadAsync(URL_LAMBO);
+      lamboCache = gltf.scene;
+    }
+    const car = lamboCache.clone(true);
+    applyCarPaint(car, s);
+    normalizeModel(car, 4.4);
+    grp.add(car);
+
+    if (s.spoiler !== 'none') {
+      const box = new THREE.Box3().setFromObject(car);
+      addSpoilerMesh(grp, 'supercar', s.spoiler, s.color, 1.90, box.min.x + 0.08, box.max.y * 0.82);
+    }
+  } catch (err) {
+    console.warn('Lamborghini model failed, using fallback', err);
+    buildSupercarBox(grp, s);
+  } finally {
+    clearLoadingMessage();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  SPORT SEDAN  – Kenney Car Kit GLTF (CC0)
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -792,6 +824,8 @@ async function buildCar() {
 
   if (state.carShape === 'ferrari') {
     await buildFerrari(carGroup, state);
+  } else if (state.carShape === 'lamborghini') {
+    await buildLambo(carGroup, state);
   } else if (state.carShape === 'suv') {
     await buildSuv(carGroup, state);
   } else if (state.carShape === 'race') {
@@ -866,10 +900,11 @@ function drawThumb(ctx, W, H, shape) {
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
 
   const pts = {
-    ferrari: [[0.07,0.72],[0.07,0.62],[0.18,0.44],[0.38,0.32],[0.58,0.28],[0.76,0.34],[0.90,0.50],[0.93,0.72]],
-    sedan:   [[0.08,0.72],[0.08,0.56],[0.24,0.40],[0.52,0.32],[0.66,0.32],[0.80,0.42],[0.91,0.52],[0.92,0.72]],
-    suv:     [[0.08,0.74],[0.08,0.52],[0.14,0.26],[0.22,0.20],[0.78,0.20],[0.88,0.26],[0.92,0.50],[0.92,0.74]],
-    race:    [[0.06,0.74],[0.06,0.64],[0.14,0.50],[0.32,0.38],[0.60,0.34],[0.80,0.40],[0.92,0.56],[0.94,0.74]],
+    ferrari:     [[0.07,0.72],[0.07,0.62],[0.18,0.44],[0.38,0.32],[0.58,0.28],[0.76,0.34],[0.90,0.50],[0.93,0.72]],
+    lamborghini: [[0.06,0.74],[0.06,0.66],[0.12,0.48],[0.28,0.30],[0.55,0.24],[0.78,0.32],[0.92,0.52],[0.94,0.74]],
+    sedan:       [[0.08,0.72],[0.08,0.56],[0.24,0.40],[0.52,0.32],[0.66,0.32],[0.80,0.42],[0.91,0.52],[0.92,0.72]],
+    suv:         [[0.08,0.74],[0.08,0.52],[0.14,0.26],[0.22,0.20],[0.78,0.20],[0.88,0.26],[0.92,0.50],[0.92,0.74]],
+    race:        [[0.06,0.74],[0.06,0.64],[0.14,0.50],[0.32,0.38],[0.60,0.34],[0.80,0.40],[0.92,0.56],[0.94,0.74]],
   }[shape] || [];
 
   ctx.save();
