@@ -541,8 +541,15 @@ async function buildLambo(grp, s) {
       lamboCache = gltf.scene;
     }
     const car = lamboCache.clone(true);
+    // Reset any baked-in root transform from the GLB export before floor-snapping
+    car.position.set(0, 0, 0);
+    car.rotation.set(0, 0, 0);
     applyCarPaint(car, s);
     normalizeModel(car, 4.4);
+    // Second floor-snap: guards against embedded ground planes that can fool
+    // the first bounding-box measurement (common in informal GLB exports)
+    const floorBox = new THREE.Box3().setFromObject(car);
+    if (floorBox.min.y > 0.01) car.position.y -= floorBox.min.y;
     grp.add(car);
 
     if (s.spoiler !== 'none') {
