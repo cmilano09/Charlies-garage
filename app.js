@@ -11,19 +11,22 @@ import { RoundedBoxGeometry }    from 'three/addons/geometries/RoundedBoxGeometr
 
 // ── Free 3-D car model URLs ────────────────────────────────────────────────
 // Ferrari 458 Italia – from official Three.js examples repo (CC-BY)
-const URL_FERRARI  = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/ferrari.glb';
-// Ferrari AO map
+const URL_FERRARI    = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/ferrari.glb';
 const URL_FERRARI_AO = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/ferrari_ao.png';
+// Kenney Car Kit v1.4 – CC0 public domain, ~150 KB each
+const URL_SEDAN      = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/sedan.glb';
+const URL_SUV        = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/suv.glb';
+const URL_RACE       = 'https://raw.githubusercontent.com/ETdoFresh/kenney.nl/master/carkit_v1.4/Models/GLTF%20format/race.glb';
 // Draco decoder (needed to decompress the ferrari.glb)
-const DRACO_PATH   = 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/libs/draco/gltf/';
+const DRACO_PATH     = 'https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/libs/draco/gltf/';
 
 // ── Data ──────────────────────────────────────────────────────────────────
 
 const CARS = [
-  { id: 'ferrari', label: 'Ferrari 458',   desc: 'Iconic Italian supercar – real 3D model', shape: 'ferrari' },
-  { id: 'sedan',   label: 'Sport Sedan',   desc: 'Sleek & luxurious',                         shape: 'sedan'   },
-  { id: 'suv',     label: 'Premium SUV',   desc: 'Powerful & refined',                         shape: 'suv'     },
-  { id: 'classic', label: 'Classic Muscle',desc: 'American heritage',                          shape: 'classic' },
+  { id: 'ferrari', label: 'Ferrari 458',  desc: 'Iconic Italian supercar',  shape: 'ferrari' },
+  { id: 'sedan',   label: 'Sport Sedan',  desc: 'Sleek 4-door cruiser',      shape: 'sedan'   },
+  { id: 'suv',     label: 'Premium SUV',  desc: 'Powerful & spacious',       shape: 'suv'     },
+  { id: 'race',    label: 'Race Car',     desc: 'Built for the track',       shape: 'race'    },
 ];
 
 const COLORS = [
@@ -81,8 +84,11 @@ let threeReady = false;
 // Reusable GLTF loader (keeps the Draco decoder warm)
 let gltfLoader = null;
 
-// Cached Ferrari model scene (avoid re-downloading on every rebuild)
+// Cached model scenes (avoid re-downloading on every rebuild)
 let ferrariCache = null;
+let sedanCache   = null;
+let suvCache     = null;
+let raceCache    = null;
 
 // ══════════════════════════════════════════════════════════════════════════
 //  SCREEN MANAGEMENT
@@ -387,6 +393,62 @@ function placeWheels(carGrp, wRadius, positions, style) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+//  GENERIC GLTF HELPERS
+// ══════════════════════════════════════════════════════════════════════════
+
+// Traverse every mesh in a loaded GLTF model and apply PBR materials based
+// on mesh/material name keywords so the car adopts the player's chosen paint.
+function applyCarPaint(model, s) {
+  const paint = paintMat(s.color);
+  const glass = glassMat();
+  const tyre  = tyreMat();
+  const rim   = rimMat(s.wheel);
+  const hl    = hlMat(s.headlight);
+  const tl    = tlMat();
+
+  model.traverse(child => {
+    if (!child.isMesh) return;
+    child.castShadow    = true;
+    child.receiveShadow = true;
+
+    const n = (child.name + ' ' + (child.material?.name || '')).toLowerCase();
+
+    if (/glass|window|windshield|windscreen/.test(n)) {
+      child.material = glass;
+    } else if (/tire|tyre|rubber/.test(n)) {
+      child.material = tyre;
+    } else if (/rim|hub|spoke|disc_brake|brake/.test(n)) {
+      child.material = rim;
+    } else if (/light_front|headlight|lamp_front|lens/.test(n)) {
+      child.material = hl;
+    } else if (/light_rear|taillight|lamp_rear/.test(n)) {
+      child.material = tl;
+    } else {
+      child.material = paint;
+    }
+  });
+}
+
+// Scale a cloned GLTF scene to targetLength along its longest horizontal axis
+// and sit it on y = 0, centred on the podium.
+function normalizeModel(model, targetLength) {
+  const box  = new THREE.Box3().setFromObject(model);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+
+  const scale = targetLength / Math.max(size.x, size.z);
+  model.scale.setScalar(scale);
+
+  // Re-measure after scaling
+  const box2 = new THREE.Box3().setFromObject(model);
+  const cen  = new THREE.Vector3();
+  box2.getCenter(cen);
+  model.position.x -= cen.x;
+  model.position.z -= cen.z;
+  model.position.y  = -box2.min.y;   // sit on floor
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 //  FERRARI 458 – real GLTF model from Three.js examples
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -464,390 +526,141 @@ async function buildFerrari(grp, s) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  SPORT SEDAN  – RoundedBoxGeometry assembly
+//  SPORT SEDAN  – Kenney Car Kit GLTF (CC0)
 // ══════════════════════════════════════════════════════════════════════════
 
-function buildSedan(grp, s) {
-  const paint = paintMat(s.color);
-  const glass = glassMat();
-  const dark  = darkMat();
+async function buildSedan(grp, s) {
+  setLoadingMessage('Loading Sedan model…');
+  try {
+    if (!sedanCache) {
+      const gltf = await gltfLoader.loadAsync(URL_SEDAN);
+      sedanCache = gltf.scene;
+    }
+    const car = sedanCache.clone(true);
+    applyCarPaint(car, s);
+    normalizeModel(car, 4.2);
+    grp.add(car);
 
-  const W = 1.85;   // car width
-  const L = 4.40;   // total length
-  const wR = 0.36;  // wheel radius
-
-  // ── Lower body (door / sill area) ─────────────────────────────
-  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.50, W, 4, 0.06), paint);
-  lower.position.y = wR * 2 + 0.25;
-  lower.castShadow = true;
-  grp.add(lower);
-
-  // ── Hood (front sloped section) ───────────────────────────────
-  const hoodL = 1.32;
-  const hood  = new THREE.Mesh(new RoundedBoxGeometry(hoodL, 0.30, W * 0.96, 4, 0.06), paint);
-  hood.position.set(L / 2 - hoodL / 2, wR * 2 + 0.50 + 0.15, 0);
-  hood.rotation.z = 0.09;
-  hood.castShadow = true;
-  grp.add(hood);
-
-  // ── Trunk ─────────────────────────────────────────────────────
-  const trunkL = 1.10;
-  const trunk  = new THREE.Mesh(new RoundedBoxGeometry(trunkL, 0.26, W * 0.94, 4, 0.06), paint);
-  trunk.position.set(-(L / 2 - trunkL / 2), wR * 2 + 0.50 + 0.13, 0);
-  trunk.rotation.z = -0.07;
-  trunk.castShadow = true;
-  grp.add(trunk);
-
-  // ── Cabin (passenger compartment) ────────────────────────────
-  const cabL = 2.05;
-  const cabH = 0.62;
-  const cabin = new THREE.Mesh(new RoundedBoxGeometry(cabL, cabH, W * 0.90, 4, 0.07), paint);
-  cabin.position.set(-0.12, wR * 2 + 0.50 + 0.31 + cabH / 2, 0);
-  cabin.castShadow = true;
-  grp.add(cabin);
-
-  // ── Cabin roof darker shade ───────────────────────────────────
-  const roofPaint = paintMat(s.color);
-  roofPaint.color.multiplyScalar(0.82);
-  const roof = new THREE.Mesh(new RoundedBoxGeometry(cabL * 0.96, 0.08, W * 0.86, 3, 0.03), roofPaint);
-  roof.position.set(-0.12, wR * 2 + 0.50 + 0.31 + cabH + 0.04, 0);
-  grp.add(roof);
-
-  // ── Windshield ────────────────────────────────────────────────
-  const windH = cabH * 0.78;
-  const windW = W * 0.74;
-  const makeWind = (xPos, rotZ) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.07, windH, windW), glass);
-    m.position.set(xPos, wR * 2 + 0.50 + 0.31 + cabH / 2, 0);
-    m.rotation.z = rotZ;
-    grp.add(m);
-  };
-  makeWind( cabL / 2 - 0.10,  0.20);  // front windshield (angled)
-  makeWind(-cabL / 2 + 0.10, -0.18);  // rear window (angled)
-
-  // ── Side windows ─────────────────────────────────────────────
-  const sideGeo = new THREE.BoxGeometry(cabL * 0.78, windH * 0.82, 0.05);
-  [W * 0.44, -W * 0.44].forEach(z => {
-    const m = new THREE.Mesh(sideGeo, glass);
-    m.position.set(-0.12, wR * 2 + 0.50 + 0.31 + cabH / 2, z);
-    grp.add(m);
-  });
-
-  // ── Door crease ───────────────────────────────────────────────
-  const crease = paintMat(s.color);
-  crease.color.multiplyScalar(0.75);
-  const creaseM = new THREE.Mesh(new THREE.BoxGeometry(L * 0.84, 0.03, W + 0.04), crease);
-  creaseM.position.y = wR * 2 + 0.46;
-  grp.add(creaseM);
-
-  // ── Bumpers ───────────────────────────────────────────────────
-  const frontBumper = new THREE.Mesh(new RoundedBoxGeometry(0.14, 0.30, W * 0.88, 3, 0.04), dark);
-  frontBumper.position.set(L / 2 + 0.05, wR * 2 + 0.16, 0);
-  grp.add(frontBumper);
-  const rearBumper = frontBumper.clone();
-  rearBumper.position.x = -(L / 2 + 0.05);
-  grp.add(rearBumper);
-
-  // ── Grille ────────────────────────────────────────────────────
-  const grille = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.72), dark);
-  grille.position.set(L / 2 + 0.06, wR * 2 + 0.36, 0);
-  grp.add(grille);
-  for (let i = 0; i < 4; i++) {
-    const slat = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.018, 0.70), chromeMat());
-    slat.position.set(L / 2 + 0.06, wR * 2 + 0.29 + i * 0.045, 0);
-    grp.add(slat);
+    if (s.spoiler !== 'none') {
+      const box = new THREE.Box3().setFromObject(car);
+      addSpoilerMesh(grp, 'sedan', s.spoiler, s.color, 1.85, box.min.x + 0.1, box.max.y * 0.88);
+    }
+  } catch (err) {
+    console.warn('Sedan model failed, using fallback', err);
+    buildSedanBox(grp, s);
+  } finally {
+    clearLoadingMessage();
   }
-
-  // ── Headlights ────────────────────────────────────────────────
-  [W * 0.36, -W * 0.36].forEach(z => {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.10, 0.28), hlMat(s.headlight));
-    hl.position.set(L / 2 + 0.06, wR * 2 + 0.52, z);
-    grp.add(hl);
-    const pt = new THREE.PointLight(new THREE.Color(hlMat(s.headlight).color), 1.5, 4, 2);
-    pt.position.set(L / 2 + 0.2, wR * 2 + 0.52, z);
-    grp.add(pt);
-  });
-
-  // ── Tail lights ───────────────────────────────────────────────
-  [W * 0.38, -W * 0.38].forEach(z => {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.34), tlMat());
-    tl.position.set(-(L / 2 + 0.04), wR * 2 + 0.55, z);
-    grp.add(tl);
-  });
-
-  // ── Side mirrors ──────────────────────────────────────────────
-  [W / 2 + 0.06, -(W / 2 + 0.06)].forEach(z => {
-    const mir = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.09), dark);
-    mir.position.set(L * 0.28, wR * 2 + 0.86, z);
-    grp.add(mir);
-  });
-
-  // ── Spoiler ───────────────────────────────────────────────────
-  addSpoilerMesh(grp, 'sedan', s.spoiler, s.color, W, -L / 2 + 0.1, wR * 2 + 0.72);
-
-  // ── Wheels ────────────────────────────────────────────────────
-  const wX = L * 0.295;
-  placeWheels(grp, wR, [
-    [-wX, 0, -(W / 2 + 0.01)],
-    [-wX, 0,   W / 2 + 0.01 ],
-    [ wX, 0, -(W / 2 + 0.01)],
-    [ wX, 0,   W / 2 + 0.01 ],
-  ], s.wheel);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-//  PREMIUM SUV
+//  PREMIUM SUV  – Kenney Car Kit GLTF (CC0)
 // ══════════════════════════════════════════════════════════════════════════
 
-function buildSuv(grp, s) {
+async function buildSuv(grp, s) {
+  setLoadingMessage('Loading SUV model…');
+  try {
+    if (!suvCache) {
+      const gltf = await gltfLoader.loadAsync(URL_SUV);
+      suvCache = gltf.scene;
+    }
+    const car = suvCache.clone(true);
+    applyCarPaint(car, s);
+    normalizeModel(car, 4.4);
+    grp.add(car);
+
+    if (s.spoiler !== 'none') {
+      const box = new THREE.Box3().setFromObject(car);
+      addSpoilerMesh(grp, 'suv', s.spoiler, s.color, 1.96, box.min.x + 0.1, box.max.y * 0.94);
+    }
+  } catch (err) {
+    console.warn('SUV model failed, using fallback', err);
+    buildSuvBox(grp, s);
+  } finally {
+    clearLoadingMessage();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  RACE CAR  – Kenney Car Kit GLTF (CC0)
+// ══════════════════════════════════════════════════════════════════════════
+
+async function buildRace(grp, s) {
+  setLoadingMessage('Loading Race Car model…');
+  try {
+    if (!raceCache) {
+      const gltf = await gltfLoader.loadAsync(URL_RACE);
+      raceCache = gltf.scene;
+    }
+    const car = raceCache.clone(true);
+    applyCarPaint(car, s);
+    normalizeModel(car, 4.2);
+    grp.add(car);
+
+    if (s.spoiler !== 'none') {
+      const box = new THREE.Box3().setFromObject(car);
+      addSpoilerMesh(grp, 'supercar', s.spoiler, s.color, 1.85, box.min.x + 0.08, box.max.y * 0.85);
+    }
+  } catch (err) {
+    console.warn('Race model failed, using fallback', err);
+    buildRaceBox(grp, s);
+  } finally {
+    clearLoadingMessage();
+  }
+}
+
+// ── Procedural fallbacks (used if GLTF download fails) ────────────────────
+
+function buildSedanBox(grp, s) {
   const paint = paintMat(s.color);
   const glass = glassMat();
   const dark  = darkMat();
-
-  const W  = 1.96;
-  const L  = 4.65;
-  const wR = 0.42;  // slightly bigger wheels for SUV
-
-  // ── Lower body ────────────────────────────────────────────────
-  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.56, W, 4, 0.08), paint);
-  lower.position.y = wR * 2 + 0.28;
-  lower.castShadow = true;
-  grp.add(lower);
-
-  // ── Upper body (tall, boxy) ───────────────────────────────────
-  const upperH = 0.95;
-  const upper  = new THREE.Mesh(new RoundedBoxGeometry(L * 0.88, upperH, W * 0.94, 4, 0.08), paint);
-  upper.position.y = wR * 2 + 0.56 + upperH / 2;
-  upper.castShadow = true;
-  grp.add(upper);
-
-  // ── Roof ──────────────────────────────────────────────────────
-  const roofPaint = paintMat(s.color);
-  roofPaint.color.multiplyScalar(0.80);
-  const roofMesh = new THREE.Mesh(new RoundedBoxGeometry(L * 0.84, 0.08, W * 0.90, 3, 0.03), roofPaint);
-  roofMesh.position.y = wR * 2 + 0.56 + upperH + 0.04;
-  grp.add(roofMesh);
-
-  // ── Short bonnet ─────────────────────────────────────────────
-  const bonnetL = 0.75;
-  const bonnet  = new THREE.Mesh(new RoundedBoxGeometry(bonnetL, 0.24, W * 0.96, 3, 0.05), paint);
-  bonnet.position.set(L * 0.44 - bonnetL * 0.4, wR * 2 + 0.56 + upperH * 0.35, 0);
-  bonnet.rotation.z = 0.14;
-  grp.add(bonnet);
-
-  // ── Windows (3 rows each side + windshield + rear) ────────────
-  const winH   = upperH * 0.65;
-  const winTop = wR * 2 + 0.56 + upperH * 0.52;
-
-  // Windshield (angled)
-  const wind = new THREE.Mesh(new THREE.BoxGeometry(0.08, winH * 0.92, W * 0.72), glass);
-  wind.position.set(L * 0.38, winTop, 0);
-  wind.rotation.z = 0.28;
-  grp.add(wind);
-
-  // Rear window
-  const rearWin = new THREE.Mesh(new THREE.BoxGeometry(0.07, winH * 0.80, W * 0.72), glass);
-  rearWin.position.set(-L * 0.40, winTop, 0);
-  rearWin.rotation.z = -0.12;
-  grp.add(rearWin);
-
-  // Side windows (3 per side)
-  const rowWs = [L * 0.22, -L * 0.02, -L * 0.25];
-  rowWs.forEach(xPos => {
-    [W * 0.44, -W * 0.44].forEach(z => {
-      const sw = new THREE.Mesh(new THREE.BoxGeometry(L * 0.24, winH * 0.75, 0.05), glass);
-      sw.position.set(xPos, winTop, z);
-      grp.add(sw);
-    });
+  const W = 1.85, L = 4.40, wR = 0.36;
+  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.50, W, 4, 0.06), paint);
+  lower.position.y = wR * 2 + 0.25; lower.castShadow = true; grp.add(lower);
+  const cabL = 2.05, cabH = 0.62;
+  const cabin = new THREE.Mesh(new RoundedBoxGeometry(cabL, cabH, W * 0.90, 4, 0.07), paint);
+  cabin.position.set(-0.12, wR * 2 + 0.50 + 0.31 + cabH / 2, 0); cabin.castShadow = true; grp.add(cabin);
+  const wind = new THREE.Mesh(new THREE.BoxGeometry(0.07, cabH * 0.78, W * 0.74), glass);
+  wind.position.set(cabL / 2 - 0.10, wR * 2 + 0.50 + 0.31 + cabH / 2, 0); wind.rotation.z = 0.20; grp.add(wind);
+  [W * 0.44, -W * 0.44].forEach(z => {
+    const sw = new THREE.Mesh(new THREE.BoxGeometry(cabL * 0.78, cabH * 0.64, 0.05), glass);
+    sw.position.set(-0.12, wR * 2 + 0.50 + 0.31 + cabH / 2, z); grp.add(sw);
   });
-
-  // ── Roof rack ─────────────────────────────────────────────────
-  const rrY = wR * 2 + 0.56 + upperH + 0.10;
-  [-L * 0.28, 0, L * 0.28].forEach(x => {
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, W * 0.88), chromeMat());
-    bar.position.set(x, rrY, 0);
-    grp.add(bar);
-  });
-  [W * 0.40, -W * 0.40].forEach(z => {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(L * 0.72, 0.03, 0.04), chromeMat());
-    rail.position.set(0, rrY, z);
-    grp.add(rail);
-  });
-
-  // ── Running boards ────────────────────────────────────────────
-  [W / 2 + 0.03, -(W / 2 + 0.03)].forEach(z => {
-    const board = new THREE.Mesh(new THREE.BoxGeometry(L * 0.76, 0.04, 0.14), dark);
-    board.position.set(0, wR * 2 * 0.48, z);
-    grp.add(board);
-  });
-
-  // ── Headlights ────────────────────────────────────────────────
-  [W * 0.38, -W * 0.38].forEach(z => {
-    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.36), hlMat(s.headlight));
-    hl.position.set(L / 2 + 0.06, wR * 2 + 0.60, z);
-    grp.add(hl);
-    const pt = new THREE.PointLight(new THREE.Color(hlMat(s.headlight).color), 1.5, 5, 2);
-    pt.position.set(L / 2 + 0.2, wR * 2 + 0.60, z);
-    grp.add(pt);
-  });
-
-  // ── Tail lights (vertical strips) ────────────────────────────
-  [W * 0.40, -W * 0.40].forEach(z => {
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.12), tlMat());
-    tl.position.set(-(L / 2 + 0.04), wR * 2 + 0.84, z);
-    grp.add(tl);
-  });
-
-  // ── Side mirrors ──────────────────────────────────────────────
-  [W / 2 + 0.07, -(W / 2 + 0.07)].forEach(z => {
-    const mir = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.08, 0.10), dark);
-    mir.position.set(L * 0.35, wR * 2 + 1.20, z);
-    grp.add(mir);
-  });
-
-  // ── Bumpers ───────────────────────────────────────────────────
-  [L / 2 + 0.06, -(L / 2 + 0.06)].forEach(x => {
-    const bmp = new THREE.Mesh(new RoundedBoxGeometry(0.16, 0.32, W * 0.88, 3, 0.05), dark);
-    bmp.position.set(x, wR * 2 + 0.18, 0);
-    grp.add(bmp);
-  });
-
-  addSpoilerMesh(grp, 'suv', s.spoiler, s.color, W, -L / 2 + 0.1, wR * 2 + 0.56 + upperH);
-
-  const wX = L * 0.295;
-  placeWheels(grp, wR, [
-    [-wX, 0, -(W / 2 + 0.01)],
-    [-wX, 0,   W / 2 + 0.01 ],
-    [ wX, 0, -(W / 2 + 0.01)],
-    [ wX, 0,   W / 2 + 0.01 ],
-  ], s.wheel);
+  addSpoilerMesh(grp, 'sedan', s.spoiler, s.color, W, -L / 2 + 0.1, wR * 2 + 0.72);
+  placeWheels(grp, wR, [[-L*0.295,0,-(W/2+0.01)],[-L*0.295,0,W/2+0.01],[L*0.295,0,-(W/2+0.01)],[L*0.295,0,W/2+0.01]], s.wheel);
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-//  CLASSIC MUSCLE CAR
-// ══════════════════════════════════════════════════════════════════════════
+function buildSuvBox(grp, s) {
+  const paint = paintMat(s.color);
+  const glass = glassMat();
+  const W = 1.96, L = 4.65, wR = 0.42, upperH = 0.95;
+  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.56, W, 4, 0.08), paint);
+  lower.position.y = wR * 2 + 0.28; lower.castShadow = true; grp.add(lower);
+  const upper = new THREE.Mesh(new RoundedBoxGeometry(L * 0.88, upperH, W * 0.94, 4, 0.08), paint);
+  upper.position.y = wR * 2 + 0.56 + upperH / 2; upper.castShadow = true; grp.add(upper);
+  const wind = new THREE.Mesh(new THREE.BoxGeometry(0.08, upperH * 0.60, W * 0.72), glass);
+  wind.position.set(L * 0.38, wR * 2 + 0.56 + upperH * 0.52, 0); wind.rotation.z = 0.28; grp.add(wind);
+  addSpoilerMesh(grp, 'suv', s.spoiler, s.color, W, -L / 2 + 0.1, wR * 2 + 0.56 + upperH);
+  placeWheels(grp, wR, [[-L*0.295,0,-(W/2+0.01)],[-L*0.295,0,W/2+0.01],[L*0.295,0,-(W/2+0.01)],[L*0.295,0,W/2+0.01]], s.wheel);
+}
 
-function buildClassic(grp, s) {
-  const paint  = paintMat(s.color);
-  const glass  = glassMat();
-  const chrome = chromeMat();
-  const dark   = darkMat();
-
-  const W  = 1.90;
-  const L  = 4.70;
-  const wR = 0.38;
-
-  // ── Long lower body ───────────────────────────────────────────
-  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.52, W, 4, 0.07), paint);
-  lower.position.y = wR * 2 + 0.26;
-  lower.castShadow = true;
-  grp.add(lower);
-
-  // ── Muscular upper fender line (slightly wider than cabin) ────
-  const fender = new THREE.Mesh(new RoundedBoxGeometry(L * 0.92, 0.22, W + 0.06, 4, 0.05), paint);
-  fender.position.y = wR * 2 + 0.52 + 0.11;
-  grp.add(fender);
-
-  // ── Cabin ─────────────────────────────────────────────────────
-  const cabH = 0.56;
-  const cabL = 1.92;
-  const cabin = new THREE.Mesh(new RoundedBoxGeometry(cabL, cabH, W * 0.88, 4, 0.07), paint);
-  cabin.position.set(-0.08, wR * 2 + 0.52 + 0.22 + cabH / 2, 0);
-  cabin.castShadow = true;
-  grp.add(cabin);
-
-  // ── Roof ──────────────────────────────────────────────────────
-  const roofP = paintMat(s.color);
-  roofP.color.multiplyScalar(0.80);
-  const roof = new THREE.Mesh(new RoundedBoxGeometry(cabL * 0.94, 0.07, W * 0.82, 3, 0.03), roofP);
-  roof.position.set(-0.08, wR * 2 + 0.52 + 0.22 + cabH + 0.04, 0);
-  grp.add(roof);
-
-  // ── Long front hood (classic long hood) ───────────────────────
-  const hoodL = L / 2 - cabL / 2 + 0.08;
-  const hood  = new THREE.Mesh(new RoundedBoxGeometry(hoodL, 0.22, W * 0.98, 4, 0.06), paint);
-  hood.position.set(L / 2 - hoodL / 2, wR * 2 + 0.52 + 0.22 * 0.9, 0);
-  hood.rotation.z = 0.04;
-  grp.add(hood);
-
-  // ── Trunk ─────────────────────────────────────────────────────
-  const trunkL = L / 2 - cabL / 2 + 0.02;
-  const trunk  = new THREE.Mesh(new RoundedBoxGeometry(trunkL, 0.20, W * 0.96, 4, 0.06), paint);
-  trunk.position.set(-(L / 2 - trunkL / 2), wR * 2 + 0.52 + 0.22 * 0.9, 0);
-  trunk.rotation.z = -0.03;
-  grp.add(trunk);
-
-  // ── Windows ───────────────────────────────────────────────────
-  const winH   = cabH * 0.72;
-  const winTop = wR * 2 + 0.52 + 0.22 + cabH / 2;
-
-  // Windshield (upright, classic style)
-  const wind = new THREE.Mesh(new THREE.BoxGeometry(0.07, winH, W * 0.72), glass);
-  wind.position.set(cabL / 2 - 0.08, winTop, 0);
-  wind.rotation.z = 0.14;
-  grp.add(wind);
-
-  // Rear window
-  const rearWin = new THREE.Mesh(new THREE.BoxGeometry(0.07, winH * 0.90, W * 0.70), glass);
-  rearWin.position.set(-cabL / 2 + 0.08, winTop, 0);
-  rearWin.rotation.z = -0.12;
-  grp.add(rearWin);
-
-  // Side windows
-  [W * 0.42, -W * 0.42].forEach(z => {
-    const sw = new THREE.Mesh(new THREE.BoxGeometry(cabL * 0.74, winH * 0.82, 0.05), glass);
-    sw.position.set(-0.08, winTop, z);
-    grp.add(sw);
-  });
-
-  // ── Chrome bumpers (classic large chrome bumpers) ─────────────
-  [L / 2 + 0.05, -(L / 2 + 0.05)].forEach(x => {
-    const bmp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, W * 0.88), chrome);
-    bmp.position.set(x, wR * 2 + 0.22, 0);
-    grp.add(bmp);
-  });
-
-  // ── Chrome side trim ──────────────────────────────────────────
-  [W / 2 + 0.04, -(W / 2 + 0.04)].forEach(z => {
-    const trim = new THREE.Mesh(new THREE.BoxGeometry(L * 0.82, 0.04, 0.03), chrome);
-    trim.position.set(0, wR * 2 + 0.44, z);
-    grp.add(trim);
-  });
-
-  // ── Round headlights (classic round shape) ────────────────────
-  [W * 0.35, -W * 0.35].forEach(z => {
-    const hl = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), hlMat(s.headlight));
-    hl.position.set(L / 2 + 0.08, wR * 2 + 0.52, z);
-    grp.add(hl);
-    const pt = new THREE.PointLight(new THREE.Color(hlMat(s.headlight).color), 1.5, 4, 2);
-    pt.position.set(L / 2 + 0.2, wR * 2 + 0.52, z);
-    grp.add(pt);
-  });
-
-  // ── Round tail lights ─────────────────────────────────────────
-  [W * 0.35, -W * 0.35].forEach(z => {
-    const tl = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), tlMat());
-    tl.position.set(-(L / 2 + 0.06), wR * 2 + 0.52, z);
-    grp.add(tl);
-  });
-
-  // ── Round side mirrors ────────────────────────────────────────
-  [W / 2 + 0.05, -(W / 2 + 0.05)].forEach(z => {
-    const mir = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), dark);
-    mir.scale.set(1.6, 1, 0.8);
-    mir.position.set(L * 0.25, wR * 2 + 0.82, z);
-    grp.add(mir);
-  });
-
-  addSpoilerMesh(grp, 'classic', s.spoiler, s.color, W, -L / 2 + 0.12, wR * 2 + 0.74);
-
-  const wX = L * 0.295;
-  placeWheels(grp, wR, [
-    [-wX, 0, -(W / 2 + 0.01)],
-    [-wX, 0,   W / 2 + 0.01 ],
-    [ wX, 0, -(W / 2 + 0.01)],
-    [ wX, 0,   W / 2 + 0.01 ],
-  ], s.wheel);
+function buildRaceBox(grp, s) {
+  const paint = paintMat(s.color);
+  const glass = glassMat();
+  const dark  = darkMat();
+  const W = 1.92, L = 4.60, wR = 0.36;
+  const lower = new THREE.Mesh(new RoundedBoxGeometry(L, 0.28, W, 4, 0.05), paint);
+  lower.position.y = wR * 2 + 0.14; lower.castShadow = true; grp.add(lower);
+  const cabH = 0.36, cabL = 1.50;
+  const cabin = new THREE.Mesh(new RoundedBoxGeometry(cabL, cabH, W * 0.72, 4, 0.06), paint);
+  cabin.position.set(0.08, wR * 2 + 0.28 + cabH / 2, 0); cabin.castShadow = true; grp.add(cabin);
+  const wind = new THREE.Mesh(new THREE.BoxGeometry(0.06, cabH * 0.75, W * 0.62), glass);
+  wind.position.set(cabL / 2 - 0.04, wR * 2 + 0.28 + cabH / 2, 0); wind.rotation.z = 0.35; grp.add(wind);
+  const splitter = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, W * 0.96), dark);
+  splitter.position.set(L / 2 + 0.06, wR * 2 + 0.05, 0); grp.add(splitter);
+  addSpoilerMesh(grp, 'supercar', s.spoiler, s.color, W, -L / 2 + 0.08, wR * 2 + 0.55);
+  placeWheels(grp, wR, [[-L*0.300,0,-(W/2+0.01)],[-L*0.300,0,W/2+0.01],[L*0.300,0,-(W/2+0.01)],[L*0.300,0,W/2+0.01]], s.wheel);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -980,11 +793,11 @@ async function buildCar() {
   if (state.carShape === 'ferrari') {
     await buildFerrari(carGroup, state);
   } else if (state.carShape === 'suv') {
-    buildSuv(carGroup, state);
-  } else if (state.carShape === 'classic') {
-    buildClassic(carGroup, state);
+    await buildSuv(carGroup, state);
+  } else if (state.carShape === 'race') {
+    await buildRace(carGroup, state);
   } else {
-    buildSedan(carGroup, state);
+    await buildSedan(carGroup, state);
   }
 
   scene.add(carGroup);
@@ -1056,7 +869,7 @@ function drawThumb(ctx, W, H, shape) {
     ferrari: [[0.07,0.72],[0.07,0.62],[0.18,0.44],[0.38,0.32],[0.58,0.28],[0.76,0.34],[0.90,0.50],[0.93,0.72]],
     sedan:   [[0.08,0.72],[0.08,0.56],[0.24,0.40],[0.52,0.32],[0.66,0.32],[0.80,0.42],[0.91,0.52],[0.92,0.72]],
     suv:     [[0.08,0.74],[0.08,0.52],[0.14,0.26],[0.22,0.20],[0.78,0.20],[0.88,0.26],[0.92,0.50],[0.92,0.74]],
-    classic: [[0.07,0.72],[0.07,0.60],[0.20,0.38],[0.36,0.28],[0.64,0.28],[0.80,0.38],[0.92,0.60],[0.93,0.72]],
+    race:    [[0.06,0.74],[0.06,0.64],[0.14,0.50],[0.32,0.38],[0.60,0.34],[0.80,0.40],[0.92,0.56],[0.94,0.74]],
   }[shape] || [];
 
   ctx.save();
